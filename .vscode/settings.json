@@ -1,0 +1,41 @@
+{
+    "files.associations": {
+        "stm32f4xx_hal_def.h": "c",
+        "bsp_usb.h": "c",
+        "usb_device.h": "c",
+        "usbd_cdc.h": "c",
+        "usbd_conf.h": "c",
+        "usbd_desc.h": "c",
+        "usbd_cdc_if.h": "c",
+        "super_cap.h": "c",
+        "referee_task.h": "c",
+        "self_controller.h": "c",
+        "dji_motor.h": "c",
+        "message_center.h": "c",
+        "upper.h": "c",
+        "robot_cmd.h": "c",
+        "general_def.h": "c",
+        "ins_task.h": "c",
+        "can_comm.h": "c",
+        "bsp_log.h": "c",
+        "memory.h": "c",
+        "remote_control.h": "c",
+        "robot.h": "c",
+        "robot_def.h": "c",
+        "stdint.h": "c",
+        "bsp_dwt.h": "c",
+        "referee_ui.h": "c",
+        "bsp_usart.h": "c",
+        "master_process.h": "c"
+    },
+    "stm32-for-vscode.openOCDPath": "D:\\Msys2\\mingw64\\bin\\openocd.EXE",
+    "stm32-for-vscode.makePath": false,
+    "stm32-for-vscode.armToolchainPath": "D:\\Msys2\\mingw64\\bin",
+    "terminal.integrated.profiles.windows": {
+    "mysys2-mingw64": {
+      "path": "cmd.exe", // 意思是使用cmd作为父进程启动终端
+      "args": ["/c","D:\\Msys2\\msys2_shell.cmd -defterm -mingw64 -no-start -here"]
+        // msys2_shell.cmd在msys的安装目录下，这里要改为你自己的目录
+    }
+  }
+}

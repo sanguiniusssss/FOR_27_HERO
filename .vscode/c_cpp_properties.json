@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "ARM GCC",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "D:/Msys2/mingw64/lib/gcc/arm-none-eabi/13.3.0/include",
+                "D:/Msys2/mingw64/lib/gcc/arm-none-eabi/13.3.0/include-fixed",
+                "D:/Msys2/mingw64/arm-none-eabi/include"
+            ],
+            "defines": [
+                "USE_HAL_DRIVER",
+                "STM32F407xx"
+            ],
+            "compilerPath": "D:/Msys2/mingw64/bin/arm-none-eabi-gcc.exe",
+            "cStandard": "c11",
+            "intelliSenseMode": "gcc-arm"
+        }
+    ],
+    "version": 4
+}
