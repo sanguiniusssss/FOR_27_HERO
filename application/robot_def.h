@@ -18,12 +18,12 @@
 #include "self_controller.h"
 
 /* 开发板类型定义,烧录时注意不要弄错对应功能;修改定义后需要重新编译,只能存在一个定义! */
-//#define ONE_BOARD // 单板控制整车
-#define CHASSIS_BOARD // 底盘板
+#define ONE_BOARD // 单板控制整车
+//#define CHASSIS_BOARD // 底盘板
 //#define GIMBAL_BOARD  // 云台板
 
-//#define USE_DT7     // 使用DT7遥控器进行控制
-#define USE_VT13    // 使用VT13(图传接收端)遥控器进行控制
+#define USE_DT7     // 使用DT7遥控器进行控制
+//#define USE_VT13    // 使用VT13(图传接收端)遥控器进行控制
 //#define USE_FS      // 使用富斯IBUS协议进行控制 // 注意添加反相器！！！！！
 
 #define VISION_USE_VCP // 使用虚拟串口发送视觉数据

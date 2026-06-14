@@ -617,15 +617,15 @@ static void MouseKeySet()
                         shoot_cmd_send.shoot_single_flag=0; 
                     }
                 }
-                if (rc_data[TEMP].mouse.press_m&&shoot_flag==1)
-                {
-                    shoot_flag=0;
-                     shoot_num++;      /* code */
-                }
-                else if (!(rc_data[TEMP].mouse.press_m))
-                {
-                    shoot_flag=1;
-                }
+                // if (rc_data[TEMP].mouse.press_m&&shoot_flag==1)
+                // {
+                //     shoot_flag=0;
+                //      shoot_num++;      /* code */
+                // }
+                // else if (!(rc_data[TEMP].mouse.press_m))
+                // {
+                //     shoot_flag=1;
+                // }
                 if ( shoot_num%2==0)
                 {
                     shoot_cmd_send.shoot_mode = SHOOT_ON;
@@ -681,15 +681,15 @@ if (chassis_cmd_send.chassis_mode == CHASSIS_ZERO_FORCE&& gimbal_cmd_send.gimbal
                         shoot_cmd_send.shoot_single_flag=0; 
                     }
                 }
-                if (rc_data[TEMP].mouse.press_m&&shoot_flag==1)
-                {
-                    shoot_flag=0;
-                     shoot_num++;      /* code */
-                }
-                else if (!(rc_data[TEMP].mouse.press_m))
-                {
-                    shoot_flag=1;
-                }
+                // if (rc_data[TEMP].mouse.press_m&&shoot_flag==1)
+                // {
+                //     shoot_flag=0;
+                //      shoot_num++;      /* code */
+                // }
+                // else if (!(rc_data[TEMP].mouse.press_m))
+                // {
+                //     shoot_flag=1;
+                // }
                 if ( shoot_num%2==0)
                 {
                     shoot_cmd_send.shoot_mode = SHOOT_ON;
@@ -1265,20 +1265,23 @@ void RobotCMDTask()
 
     // 根据遥控器左侧开关,确定当前使用的控制模式为遥控器调试还是键鼠
 #ifdef USE_DT7
-   // if (switch_is_down(rc_data[TEMP].rc.switch_left) && switch_is_mid(rc_data[TEMP].rc.switch_right))
+    if (switch_is_down(rc_data[TEMP].rc.switch_left) && switch_is_mid(rc_data[TEMP].rc.switch_right))
+        MouseKeySet(); // 键鼠控制
+    else
+        RemoteControlSet(); // 遥控器控制
 #endif
 
 #ifdef USE_VT13
-        if (rc_data[TEMP].rc.Custom_button_right_count % 2 == 1) // 自定义按键右按下奇数次为键鼠控制
-       
+    if (rc_data[TEMP].rc.Custom_button_right_count % 2 == 1) // 自定义按键右按下奇数次为键鼠控制
+        MouseKeySet();
+    else
+        RemoteControlSet();
 #endif
 
 #ifdef USE_FS
-           // if (0)
+    // if (0) ...
+    RemoteControlSet(); // 富斯遥控器下默认走遥控器控制
 #endif
-                MouseKeySet(); // 键鼠控制
-             else
-                RemoteControlSet(); // 遥控器控制
 
     EmergencyHandler(); // 处理模块离线和遥控器急停等紧急情况
 

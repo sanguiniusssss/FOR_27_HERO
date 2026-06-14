@@ -97,7 +97,6 @@ static void MecanumIKine()
      vt_lf = chassis_vx + chassis_vy - wz_compensate * LF_CENTER;  // 1
      vt_lb = -chassis_vx + chassis_vy - wz_compensate * LB_CENTER; // 4
      vt_rb = chassis_vx + chassis_vy + wz_compensate * RB_CENTER;  // 3
-
 }
 
 /**
@@ -125,11 +124,20 @@ static void ChassisModeControl()
     DJIMotorEnable(motor_lb);
     DJIMotorEnable(motor_rb);
 
+    // 根据底盘模式决定是否输出控制量
+    if (chassis_cmd_recv.chassis_mode == CHASSIS_ZERO_FORCE ||
+        chassis_cmd_recv.chassis_mode == CHASSIS_NO_MOVE)
+    {
+        chassis_vx = 0.0f;
+        chassis_vy = 0.0f;
+        wz_compensate = 0.0f;
+        return;
+    }
 
-    
-    // 底盘向右为左右正方向，向前为逆时针旋转为角度正方向;
+    // 底盘向右为左右正方向,向前为逆时针旋转为角度正方向;
     chassis_vx = chassis_cmd_recv.vx;
     chassis_vy = chassis_cmd_recv.vy;
+    wz_compensate = chassis_cmd_recv.wz; // 由 cmd 层发送的旋转角速度参考
 }
 
 /* 机器人底盘控制核心任务 */
@@ -145,6 +153,7 @@ void ChassisTask()
     // 根据控制模式进行逆运动学解算,计算底盘输出
     MecanumIKine();
 
+    
     // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
     ChassisOutput();
 
