@@ -215,7 +215,7 @@ static void RemoteControlSet()
         gimbal_cmd_send.yaw_add_angle = -(float)rc_data[TEMP].rc.rocker_l_ * 0.001f;   // 水平方向
         gimbal_cmd_send.pitch_add_angle = (float)rc_data[TEMP].rc.rocker_l1 * 0.0005f; // 竖直方向
         chassis_cmd_send.relative_angle = gimbal_fetch_data.yaw_relative_angle;
-             if (switch_is_up(rc_data[TEMP].rc.switch_right))
+             if (switch_is_up(rc_data[TEMP].rc.switch_right))//
      {
 
         if(shoot_start_flag==1)
@@ -227,7 +227,7 @@ static void RemoteControlSet()
             shoot_cmd_send.shoot_mode = SHOOT_ON; 
             shoot_cmd_send.friction_mode =FRICTION_ON;
            shoot_cmd_send.bullet_speed=SMALL_AMU_15;
-            chassis_cmd_send.pump_mode = shoot_fetch_data.shoot_state;
+            chassis_cmd_send.pump_mode = shoot_fetch_data.shoot_state;//
      }
         else if (switch_is_mid(rc_data[TEMP].rc.switch_right))
         {
@@ -237,7 +237,7 @@ static void RemoteControlSet()
          //shoot_cmd_send.bullet_speed=SMALL_AMU_18;
         shoot_cmd_send.shoot_single_flag=0; 
         shoot_start_flag=1;
-        chassis_cmd_send.pump_mode = 0;
+        chassis_cmd_send.pump_mode = 0;//
 
         }
     }

@@ -59,7 +59,7 @@ void ChassisInit()
             .outer_loop_type = SPEED_LOOP,// 外环类型
             .close_loop_type = SPEED_LOOP ,// 闭环类型
         },
-        .motor_type = GM6020,
+        .motor_type = M3508,
     };
     //  @todo: 当前还没有设置电机的正反转,仍然需要手动添加reference的正负号,需要电机module的支持,待修改.
     chassis_motor_config.can_init_config.tx_id = 1;
@@ -135,9 +135,8 @@ static void ChassisModeControl()
     }
 
     // 底盘向右为左右正方向,向前为逆时针旋转为角度正方向;
-    chassis_vx = chassis_cmd_recv.vx;
-    chassis_vy = chassis_cmd_recv.vy;
-    wz_compensate = chassis_cmd_recv.wz; // 由 cmd 层发送的旋转角速度参考
+    chassis_vx = -chassis_cmd_recv.vx;
+    chassis_vy = -chassis_cmd_recv.vy;
 }
 
 /* 机器人底盘控制核心任务 */

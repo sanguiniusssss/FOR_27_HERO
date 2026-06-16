@@ -356,9 +356,6 @@ void DJIMotorSetSMCE()
     Motor_Control_Setting_s *motor_setting; // 电机控制参数
     Motor_Controller_s *motor_controller;   // 电机控制器
     DJI_Motor_Measure_s *measure;           // 电机测量值
-  
-  
-
     float smc_out;                     // SMC设定值
      // 遍历所有电机实例,进行串级PID的计算并设置发送报文的值
 
