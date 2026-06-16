@@ -153,8 +153,8 @@ float PIDCalculate(PIDInstance *pid, float measure, float ref)
     pid->dt = DWT_GetDeltaT(&pid->DWT_CNT); // 获取两次pid计算的时间间隔,用于积分和微分
 
     // 保存上次的测量值和误差,计算当前error
-    pid->Measure = measure;
-    pid->Ref = ref;
+    pid->Measure = measure; // 当前测量值
+    pid->Ref = ref;         // 当前目标值
     pid->Err = pid->Ref - pid->Measure;
 
     // 如果在死区外,则计算PID

@@ -12,8 +12,8 @@ void MotorControlTask()
     // if(cnt%5==0) //200hz
     // if(cnt%10==0) //100hz
   
-DJIMotorControl();
- // DJIMotorSetSMCE();
+    DJIMotorControl();
+    //DJIMotorSetSMCE();
     /* 如果有对应的电机则取消注释,可以加入条件编译或者register对应的idx判断是否注册了电机 */
    // LKMotorControl();
 

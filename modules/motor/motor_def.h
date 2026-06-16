@@ -36,9 +36,9 @@ typedef enum
 
 typedef enum
 {
-    FEEDFORWARD_NONE = 0b00,
-    CURRENT_FEEDFORWARD = 0b01,
-    SPEED_FEEDFORWARD = 0b10,
+    FEEDFORWARD_NONE = 0b00,             // 无前馈
+    CURRENT_FEEDFORWARD = 0b01,          // 电流前馈
+    SPEED_FEEDFORWARD = 0b10,            // 速度前馈
     CURRENT_AND_SPEED_FEEDFORWARD = CURRENT_FEEDFORWARD | SPEED_FEEDFORWARD,
 } Feedfoward_Type_e;
 
@@ -52,15 +52,15 @@ typedef enum
 /* 电机正反转标志 */
 typedef enum
 {
-    MOTOR_DIRECTION_NORMAL = 0,
-    MOTOR_DIRECTION_REVERSE = 1
+    MOTOR_DIRECTION_NORMAL = 0,// 电机正常方向
+    MOTOR_DIRECTION_REVERSE = 1// 电机反转标志
 } Motor_Reverse_Flag_e;
 
 /* 反馈量正反标志 */
 typedef enum
 {
-    FEEDBACK_DIRECTION_NORMAL = 0,
-    FEEDBACK_DIRECTION_REVERSE = 1
+    FEEDBACK_DIRECTION_NORMAL = 0,// 反馈量正常方向
+    FEEDBACK_DIRECTION_REVERSE = 1// 反馈量反向标志
 } Feedback_Reverse_Flag_e;
 typedef enum
 {
@@ -97,16 +97,16 @@ typedef struct
 typedef struct
 {
     float *other_angle_feedback_ptr; // 其他反馈来源的反馈数据指针
-    float *other_speed_feedback_ptr;
-    float *speed_feedforward_ptr;
-    float *current_feedforward_ptr;
+    float *other_speed_feedback_ptr; // 其他反馈来源的反馈数据指针
+    float *speed_feedforward_ptr;    // 速度前馈数据指针
+    float *current_feedforward_ptr;  // 电流前馈数据指针
 
-    PIDInstance current_PID;
-    PIDInstance speed_PID;
-    PIDInstance angle_PID;
+    PIDInstance current_PID; // 电流环PID
+    PIDInstance speed_PID;   // 速度环PID
+    PIDInstance angle_PID;   // 角度环PID
     SMCInstance smc;
     float smc_ref;
-    float pid_ref; // 将会作为每个环的输入和输出顺次通过串级闭环
+    float pid_ref; // 将会作为每个环的输入和输出顺次通过串级闭环，单位为rad/s
     float smc_diff; // 变结构项
 } Motor_Controller_s;
 

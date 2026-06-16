@@ -43,8 +43,8 @@ static uint8_t sender_enable_flag[6] = {0};
 static void MotorSenderGrouping(DJIMotorInstance *motor, CAN_Init_Config_s *config)
 {
     uint8_t motor_id = config->tx_id - 1; // 下标从零开始,先减一方便赋值
-    uint8_t motor_send_num;
-    uint8_t motor_grouping;
+    uint8_t motor_send_num;// 电机组内编号,0-15对应16个电机
+    uint8_t motor_grouping;// 电机组号,0-5对应6个CAN设备
 
     switch (motor->motor_type)
     {
@@ -53,12 +53,12 @@ static void MotorSenderGrouping(DJIMotorInstance *motor, CAN_Init_Config_s *conf
         if (motor_id < 4) // 根据ID分组
         {
             motor_send_num = motor_id;
-            motor_grouping = config->can_handle == &hcan1 ? 1 : 4;
+            motor_grouping = config->can_handle == &hcan1 ? 1 : 4;// 电机组号,0-5对应6个CAN设备
         }
         else
         {
             motor_send_num = motor_id - 4;
-            motor_grouping = config->can_handle == &hcan1 ? 0 : 3;
+            motor_grouping = config->can_handle == &hcan1 ? 0 : 3;// 电机组号,0-5对应6个CAN设备
         }
 
         // 计算接收id并设置分组发送id
@@ -352,7 +352,7 @@ void DJIMotorSetSMCE()
 {
     uint8_t group, num; // 电机组号和组内编号
     int16_t set;        // 电机控制CAN发送设定值
-    DJIMotorInstance *motor;
+    DJIMotorInstance *motor;// 电机实例指针引用
     Motor_Control_Setting_s *motor_setting; // 电机控制参数
     Motor_Controller_s *motor_controller;   // 电机控制器
     DJI_Motor_Measure_s *measure;           // 电机测量值
@@ -429,8 +429,8 @@ void DJIMotorControl()
     Motor_Control_Setting_s *motor_setting; // 电机控制参数
     Motor_Controller_s *motor_controller;   // 电机控制器
     DJI_Motor_Measure_s *measure;           // 电机测量值
-    float pid_measure, pid_ref;             // 电机PID测量值和设定值
-
+    float pid_measure;                      // 电机PID测量值
+    float pid_ref;                          // 电机PID设定值
     // 遍历所有电机实例,进行串级PID的计算并设置发送报文的值
     for (size_t i = 0; i < idx; ++i)
     { // 减小访存开销,先保存指针引用
@@ -443,7 +443,7 @@ void DJIMotorControl()
             pid_ref *= -1; // 设置反转
 
         // pid_ref会顺次通过被启用的闭环充当数据的载体
-        // 计算位置环,只有启用位置环且外层闭环为位置时会计算速度环输出
+        // 计算位置环,只有启用位置环且外层闭环为位置时会计算位置环输出
         if ((motor_setting->close_loop_type & ANGLE_LOOP) && motor_setting->outer_loop_type == ANGLE_LOOP)
         {
             if (motor_setting->angle_feedback_source == OTHER_FEED)
@@ -494,8 +494,8 @@ void DJIMotorControl()
         
 
         // 分组填入发送数据
-        group = motor->sender_group;
-        num = motor->message_num;
+        group = motor->sender_group;// 电机组号,0-5对应6个CAN设备
+        num = motor->message_num;// 电机组内编号,0-15对应16个电机
         sender_assignment[group].tx_buff[2 * num] = (uint8_t)(set >> 8);         // 低八位
         sender_assignment[group].tx_buff[2 * num + 1] = (uint8_t)(set & 0x00ff); // 高八位
 

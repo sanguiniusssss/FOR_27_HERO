@@ -21,7 +21,7 @@
 #include "stdint.h"
 #include "daemon.h"
 
-#define DJI_MOTOR_CNT 12
+#define DJI_MOTOR_CNT 12// DJI智能电机数量
 
 /* 滤波系数设置为1的时候即关闭滤波 */
 #define SPEED_SMOOTH_COEF 0.85f      // 最好大于0.85
@@ -68,21 +68,21 @@ typedef struct
 typedef struct
 {
     DJI_Motor_Measure_s measure;            // 电机测量值
-    Motor_Control_Setting_s motor_settings; // 电机设置
+    Motor_Control_Setting_s motor_settings; // 电机控制设置
     Motor_Controller_s motor_controller;    // 电机控制器
 
     CANInstance *motor_can_instance; // 电机CAN实例
     // 分组发送设置
-    uint8_t sender_group;
-    uint8_t message_num;
+    uint8_t sender_group;// 发送分组号
+    uint8_t message_num;// 发送消息编号
 
     Motor_Type_e motor_type;        // 电机类型
     Motor_Working_Type_e stop_flag; // 启停标志
 
-    DaemonInstance* daemon;
-    uint32_t feed_cnt;
+    DaemonInstance* daemon;// 电机守护进程实例指针引用
+    uint32_t feed_cnt;// 电机反馈计数器
     
-    float dt;
+    float dt;// 控制周期
 } DJIMotorInstance;
 
 /**
