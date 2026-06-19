@@ -30,16 +30,16 @@
             // ==================== 以下是修复添加的关键配置 ====================
             // 显式指定ARM工具链路径（解决GDB找不到问题）
             "armToolchainPath": "D:\\Msys2\\mingw64\\bin",
-            // 显式指定GDB可执行文件路径（解决arm-none-eabi-gdb.exe找不到问题）
-            "gdbPath": "D:\\Msys2\\mingw64\\bin\\arm-none-eabi-gdb.exe",
+            // 显式指定GDB可执行文件路径。
+            // Msys2 mingw64 未安装 arm-none-eabi-gdb.exe，但提供了支持多架构的 gdb-multiarch.exe，
+            // 可直接用于 ARM Cortex-M 调试。
+            "gdbPath": "D:\\Msys2\\mingw64\\bin\\gdb-multiarch.exe",
             // 显式指定OpenOCD可执行文件路径（解决"spawn D:\Msys2\mingw64\bin ENOENT"核心错误）
             "serverpath": "D:\\Msys2\\mingw64\\bin\\openocd.exe",
             // 开启详细调试输出（方便排查后续问题）
-            "showDevDebugOutput": "raw",
-            // 禁用GDB版本检查（避免版本不匹配警告）
-            "gdbServerArgs": [
-                "--no-version-check"
-            ]
+            "showDevDebugOutput": "raw"
+            // 注意：不要使用 gdbServerArgs 传入 "--no-version-check"，这是 GDB 的参数，
+            // 会被当作 OpenOCD 的未知参数，导致 GDB 连接被重置（ECONNRESET）。
             // dap若要使用log,请使用Jlink调试任务启动,之后再打开log任务
             // 若想要在调试前编译并且打开log,可只使用log的prelaunch task并为log任务添加depends on依赖
         },
@@ -64,7 +64,7 @@
             },
             // ==================== 以下是修复添加的关键配置 ====================
             "armToolchainPath": "D:\\Msys2\\mingw64\\bin",
-            "gdbPath": "D:\\Msys2\\mingw64\\bin\\arm-none-eabi-gdb.exe"
+            "gdbPath": "D:\\Msys2\\mingw64\\bin\\gdb-multiarch.exe"
             //"preLaunchTask": "log", // 调试时同时开启RTT viewer窗口,若daplink使用jlinkGDBserver启动,需要先开始调试再打开log
             // 若想要在调试前编译并且打开log,可只使用log的prelaunch task并为log任务添加depends on依赖
         },
@@ -80,9 +80,10 @@
             "configFiles": [
                 "./OpenOCD/openocd_dap.cfg",
             ],
+            "rtos": "FreeRTOS",
             // ==================== 以下是修复添加的关键配置 ====================
             "armToolchainPath": "D:\\Msys2\\mingw64\\bin",
-            "gdbPath": "D:\\Msys2\\mingw64\\bin\\arm-none-eabi-gdb.exe",
+            "gdbPath": "D:\\Msys2\\mingw64\\bin\\gdb-multiarch.exe",
             "serverpath": "D:\\Msys2\\mingw64\\bin\\openocd.exe",
             "showDevDebugOutput": "raw"
         },
@@ -100,7 +101,7 @@
             "rtos": "FreeRTOS",
             // ==================== 以下是修复添加的关键配置 ====================
             "armToolchainPath": "D:\\Msys2\\mingw64\\bin",
-            "gdbPath": "D:\\Msys2\\mingw64\\bin\\arm-none-eabi-gdb.exe"
+            "gdbPath": "D:\\Msys2\\mingw64\\bin\\gdb-multiarch.exe"
         },
     ],
     

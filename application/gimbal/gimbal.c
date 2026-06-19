@@ -22,8 +22,8 @@ static attitude_t *gimbal_IMU_data; // 云台IMU数据
 // #define GIMBAL_RATE_GAIN 10.0f
 //float yaw_angle_ref, pitch_angle_ref;
    static float relative_angle_gyro = 0;//陀螺仪相对角度反馈
- uint8_t mode_change_flag=0;//模式转换标志位
-  static uint8_t count=0;
+ uint8_t mode_change_flag = 0;//模式转换标志位
+  // count已移除,改为gyro_relative中以电机实例维度判断是否需要初始化
 
 
 
@@ -169,27 +169,28 @@ static void GimbalReset()
  */
 static void GimbalFreeMode()
 {
-   
-    gimbal_feedback_data.yaw_relative_angle=motor_yaw->measure.relative_angle;
+    gimbal_feedback_data.yaw_relative_angle = motor_yaw->measure.relative_angle;
+
+    // 每次循环都更新raw_gyro为最新IMU数据(yaw和pitch都要更新)
+    motor_yaw->raw_gyro = gimbal_IMU_data->Yaw;
+    motor_pitch->raw_gyro = gimbal_IMU_data->Pitch;
+
     if (mode_change_flag == 1)
     {
-        motor_yaw->raw_gyro = gimbal_IMU_data->Yaw;
+        // 模式切换首次进入: 强制两个电机重新初始化offest_angle
+        // 通过将offest_angle设为极端值,触发gyro_relative中的重新初始化判断
+        motor_yaw->measure.offest_angle = motor_yaw->raw_gyro + 180.0f;
+        motor_pitch->measure.offest_angle = motor_pitch->raw_gyro + 180.0f;
         mode_change_flag = 0;
-        count=0;
     }
 
-//     if (1771<motor_yaw->measure.ecd<1971)
-// {
-//     motor_yaw->raw_gyro = gimbal_IMU_data->Yaw;
-//      motor_yaw->measure.offest_angle=motor_yaw ->raw_gyro;/* code */
-// }
     float yaw_angle_cmd = 0, pitch_angle_cmd = 0;
-    GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);//得到添加角度值
-    gyro_relative(motor_yaw, yaw_angle_cmd,0);//角度转弧度
-    gyro_relative(motor_pitch, pitch_angle_cmd,1);
+    GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);
+    gyro_relative(motor_yaw, yaw_angle_cmd, 0);
+    gyro_relative(motor_pitch, pitch_angle_cmd, 1);
 
-    DMMotorSetRef(motor_yaw, 0, 0, 0, gyro_maker,0);//驱动电机
-   DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker,1);
+    DMMotorSetRef(motor_yaw, 0, 0, 0, gyro_maker, 0);
+    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker, 1);
 }
 static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
 {
@@ -204,13 +205,12 @@ static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
     }
     motor->measure.relative_angle=motor->measure.relative_ecd*MOTOR_ECD_TO_RAD;
 }
-static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add,uint8_t goal)//角度制转换成弧度制
+static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add, uint8_t goal)
 {
-if (count==0)
-{
-    motor->measure.offest_angle=motor->raw_gyro; 
-    count=1;/* code */
-}
+    // 每个电机独立判断是否需要初始化:
+    // 如果offest_angle与当前IMU角度(raw_gyro)差异>90度,说明尚未初始化或刚切换模式
+    if (fabsf(motor->measure.offest_angle - motor->raw_gyro) > 90.0f)
+        motor->measure.offest_angle = motor->raw_gyro;
 
   
 
