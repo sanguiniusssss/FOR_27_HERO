@@ -22,8 +22,8 @@
 #include "bsp_log.h"
 
 static uint8_t idx;
-static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];
-static osThreadId dm_task_handle[DM_MOTOR_CNT];
+static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];// 电机实例指针数组,用于存储所有注册的电机实例
+static osThreadId dm_task_handle[DM_MOTOR_CNT];// 电机任务句柄数组,用于存储所有注册的电机任务句柄
 static CANInstance sender_assignment[6] = {
     [0] = {.can_handle = &hcan1, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
     [1] = {.can_handle = &hcan1, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
@@ -38,7 +38,6 @@ static CANInstance sender_assignment[6] = {
  * @brief 6个用于确认是否有电机注册到sender_assignment中的标志位,防止发送空帧,此变量将在DJIMotorControl()使用
  *        flag的初始化在 MotorSenderGrouping()中进行
  */
-static uint8_t sender_enable_flag[6] = {0};
 static uint16_t float_to_uint(float x, float x_min, float x_max, uint8_t bits)
 {
     float span = x_max - x_min;
@@ -52,12 +51,16 @@ static float uint_to_float(int x_int, float x_min, float x_max, int bits)
     return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
 }
 
-static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)
+
+
+static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)//
 {
     memset(motor->motor_can_instace->tx_buff, 0xff, 7);  // 发送电机指令的时候前面7bytes都是0xff
     motor->motor_can_instace->tx_buff[7] = (uint8_t)cmd; // 最后一位是命令id
-    CANTransmit(motor->motor_can_instace, 1);
+    CANTransmit(motor->motor_can_instace, 1);// 发送电机指令
 }
+
+
 
 
 static void DMMotorDecode(CANInstance *motor_can)
@@ -69,49 +72,20 @@ static void DMMotorDecode(CANInstance *motor_can)
 
     DaemonReload(motor->motor_daemon);
     measure->last_ecd = measure->ecd;
-    measure->ecd = ((uint16_t)rxbuff[0]) << 8 | rxbuff[1];
+    measure->ecd = ((uint16_t)rxbuff[0]) << 8 | rxbuff[1];//
     measure->angle_single_round = ECD_ANGLE_COEF_DM * (float)measure->ecd;
     measure->speed_aps = (1.0f - SPEED_SMOOTH_COEF) * measure->speed_aps +
                          RPM_2_ANGLE_PER_SEC * SPEED_SMOOTH_COEF * (float)((int16_t)(rxbuff[2] << 8 | rxbuff[3]));
     measure->real_current = (1.0f - CURRENT_SMOOTH_COEF) * measure->real_current +
                             CURRENT_SMOOTH_COEF * (float)((int16_t)(rxbuff[4] << 8 | rxbuff[5]));
     measure->temperature = rxbuff[6];
+    
         if (measure->ecd - measure->last_ecd > 4096)
         measure->total_round--;
     else if (measure->ecd - measure->last_ecd < -4096)
         measure->total_round++;
     measure->total_angle = measure->total_round * 360 + measure->angle_single_round;
-    //  measure->offset_ecd = 1871;
-    //  measure->relative_ecd = measure->ecd - measure->offset_ecd;
-    // if (measure->relative_ecd > HALF_ECD_RANGE)//4096
-    // {
-    //     measure->relative_ecd -= ECD_RANGE;//8191
-    // }
-    // else if (measure->relative_ecd < -HALF_ECD_RANGE)
-    // {
-    //     measure->relative_ecd += ECD_RANGE; 
-    // }
-    // measure->relative_angle=measure->relative_ecd*MOTOR_ECD_TO_RAD;
-
-
-
-
-
-// measure->total_angle = 0;
-    // int aaaa=0;
-    //  measure->last_position = measure->position;
-    // tmp = (uint16_t)((rxbuff[1] << 8) | rxbuff[2]);
-    // measure->position = uint_to_float(tmp, DM_P_MIN, DM_P_MAX, 16);
-
-    // tmp = (uint16_t)((rxbuff[3] << 4) | rxbuff[4] >> 4);
-    // measure->velocity = uint_to_float(tmp, DM_V_MIN, DM_V_MAX, 12);
-
-    // tmp = (uint16_t)(((rxbuff[4] & 0x0f) << 8) | rxbuff[5]);
-    // measure->torque = uint_to_float(tmp, DM_T_MIN, DM_T_MAX, 12);
-
-    // measure->T_Mos = (float)rxbuff[6];
-    // measure->T_Rotor = (float)rxbuff[7];
-}
+}// 解析电机反馈数据
 
 static void DMMotorLostCallback(void *motor_ptr)
 {
@@ -133,7 +107,7 @@ void DMMotorCaliEncoder(DMMotorInstance *motor)
  * 
  * @attention 注意电机初始参数与上位机互相对应!!
  */
-DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor_Control_Mode)
+DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor_Control_Mode)//传入设置和模式
 {
     DMMotorInstance *motor = (DMMotorInstance *)malloc(sizeof(DMMotorInstance));
     memset(motor, 0, sizeof(DMMotorInstance));
@@ -239,16 +213,16 @@ void DMMotorTask(void const *argument)
 
      float set1, set2, set3;
     DMMotorInstance *motor = (DMMotorInstance *)argument;
-    Motor_Control_Setting_s *setting = &motor->motor_settings;
-    uint8_t motor_flag;
-    uint8_t extern_flag;
-    DM_Motor_Measure_s *measure = &motor->measure;
+    Motor_Control_Setting_s *setting = &motor->motor_settings;// 电机控制设置结构体指针,用于获取电机控制参数
+    uint8_t motor_flag;// 控制模式标志位,用于判断当前控制模式
+    uint8_t extern_flag;// 外部标志位,用于判断是否需要外部控制
+    DM_Motor_Measure_s *measure = &motor->measure;// 电机测量数据结构体指针,用于获取电机反馈数据
     while (1)
     {        
         set1 = motor->pid_ref[0];
         set2 = motor->pid_ref[1];
         set3 = motor->pid_ref[2];
-        motor_flag=motor->maker_flag;
+        motor_flag=motor->maker_flag;//控制模式标志位
         extern_flag=motor->extern_flag;
         switch (motor->control_mode)
         {
@@ -359,26 +333,12 @@ void DMMotorTask(void const *argument)
      LIMIT_MIN_MAX(set, DM_V_MIN, DM_V_MAX);
      LIMIT_MIN_MAX(set_P, DM_V_MIN, DM_V_MAX);
         if (extern_flag==0)
-        {
-                sender_assignment[3].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE)+0] = (uint8_t)(set >> 8);  // 低八位
-                sender_assignment[3].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE) + 1] = (uint8_t)(set & 0x00ff); // 高八位
-            CANTransmit(&sender_assignment[3], 1); /* code */
-        }
-                if (extern_flag==1)
-        {
-                sender_assignment[0].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE)+0] = (uint8_t)(set_P >> 8);  // 低八位
-                sender_assignment[0].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE) + 1] = (uint8_t)(set_P & 0x00ff); // 高八位
-            CANTransmit(&sender_assignment[0], 1); /* code */
-        }
-
-
              break;
         default:
             while (1)
                 LOGERROR("[dm_motor] undefined control mode!");
             break;
         }
-
         osDelay(1);
         DMMotorSetMode(DM_CMD_MOTOR_MODE, motor);
         osDelay(1);
@@ -394,8 +354,8 @@ void DMMotorControlInit()
     for (size_t i = 0; i < idx; i++)
     {
         char dm_id_buff[2] = {0};
-        __itoa(i, dm_id_buff, 10);
-        strcat(dm_task_name, dm_id_buff);
+        __itoa(i, dm_id_buff, 10);// 将索引转换为字符串
+        strcat(dm_task_name, dm_id_buff);// 将索引附加到任务名称中
         osThreadDef(dm_task_name, DMMotorTask, osPriorityNormal, 0, 128);
         dm_task_handle[i] = osThreadCreate(osThread(dm_task_name), dm_motor_instance[i]);
     }

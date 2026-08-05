@@ -15,7 +15,7 @@
 #include "controller.h"
 #include "stdint.h"
 
-#define LIMIT_MIN_MAX(x, min, max) (x) = (((x) <= (min)) ? (min) : (((x) >= (max)) ? (max) : (x)))
+#define LIMIT_MIN_MAX(x, min, max) (x) = (((x) <= (min)) ? (min) : (((x) >= (max)) ? (max) : (x)))// 限制x在min和max之间
 
 /**
  * @brief 闭环类型,如果需要多个闭环,则使用或运算
@@ -79,7 +79,7 @@ typedef struct
     Feedback_Source_e speed_feedback_source;       // 速度反馈类型
     Feedfoward_Type_e feedforward_flag;            // 前馈标志
 
-} Motor_Control_Setting_s;
+} Motor_Control_Setting_s;// 电机控制设置结构体
 
 /* 电机控制器,包括其他来源的反馈数据指针,3环控制器和电机的参考输入*/
 // 后续增加前馈数据指针
@@ -104,6 +104,7 @@ typedef struct
     PIDInstance current_PID; // 电流环PID
     PIDInstance speed_PID;   // 速度环PID
     PIDInstance angle_PID;   // 角度环PID
+    PIDInstance gyro_PID;    // 陀螺仪环PID
     SMCInstance smc;
     float smc_ref;
     float pid_ref; // 将会作为每个环的输入和输出顺次通过串级闭环，单位为rad/s
@@ -118,6 +119,9 @@ typedef enum
     GM6020,
     M3508,
     M2006,
+    J4310,
+    J4340,
+    J3507,
     LK9025,
     HT04,
 } Motor_Type_e;
@@ -157,10 +161,10 @@ typedef struct
 /* 用于初始化CAN电机的结构体,各类电机通用 */
 typedef struct
 {
-    Motor_Controller_Init_s controller_param_init_config;
-    Motor_Control_Setting_s controller_setting_init_config;
-    Motor_Type_e motor_type;
-    CAN_Init_Config_s can_init_config;
+    Motor_Controller_Init_s controller_param_init_config;// 电机控制器初始化结构体,包括三环PID的配置以及两个反馈数据来源指针
+    Motor_Control_Setting_s controller_setting_init_config;// 电机控制设置结构体,包括闭环类型,反转标志和反馈来源
+    Motor_Type_e motor_type;// 电机类型枚举,用于区分不同的电机类型,以便在发送数据时使用不同的协议   
+    CAN_Init_Config_s can_init_config;// CAN初始化结构体,包括can句柄,发送id,接收id和回调函数指针
 } Motor_Init_Config_s;
 
 #endif // !MOTOR_DEF_H

@@ -27,7 +27,7 @@ typedef struct
     offline_callback callback; // 异常处理函数,当模块发生异常时会被调用
 
     void *owner_id;            // id取拥有daemon的实例的地址,如DJIMotorInstance*,cast成void*类型
-} Daemon_Init_Config_s;
+} Daemon_Init_Config_s;// daemon初始化配置结构体,包括重载值,上线等待时间,异常处理函数指针和拥有daemon的实例地址指针
 
 /**
  * @brief 注册一个daemon实例
