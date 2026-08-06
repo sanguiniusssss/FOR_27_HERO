@@ -164,7 +164,7 @@ typedef struct {
 
     /* --- CAN 通信 --- */
     CANInstance         *motor_can_instance; // 电机 CAN 实例
-    uint8_t              sender_group;       // 发送分组号 (0-5)
+    uint8_t              sender_group;       // 发送分组号 (0-3)
     uint8_t              message_num;        // 组内编号 (0-3)
 
     /* --- 状态标志 --- */
