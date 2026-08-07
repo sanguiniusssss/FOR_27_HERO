@@ -27,8 +27,8 @@
 
 static Publisher_t       *gimbal_pub;
 static Subscriber_t      *gimbal_sub;
-static Gimbal_Upload_Data_s gimbal_feedback_data;
-static Gimbal_Ctrl_Cmd_s    gimbal_cmd_recv;
+static Gimbal_Upload_Data_s gimbal_feedback_data;           //云台反馈数据
+static Gimbal_Ctrl_Cmd_s    gimbal_cmd_recv;                //云台控制指令
 static DMMotorInstance   *motor_yaw, *motor_pitch;
 
 /* ======================== 初始化 ======================== */

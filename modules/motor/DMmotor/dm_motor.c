@@ -45,31 +45,27 @@ static uint8_t          idx = 0;                               // 已注册电�
 static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT] = {NULL}; // 实例指针数组
 
 /**
- * @brief DM 电机分组发送表 (DJI_MODE 专用)
+ * @brief DM 电机分组发送表 (一拖四/DJI_MODE 专用)
  *
- * 与 DJI 的 sender_assignment 逻辑相同, 但 CAN ID 不同:
- *   DJI:  0x1FF (C610/C620 group1) / 0x200 (group2) / 0x2FF (GM6020)
- *   DM:   0x3FE (group1)           / 0x200 (group2) / 0x2FF (group3)
+ * 参照《一拖四版本说明》:
+ *   0x3FE: 电机1-4 的电流控制帧 (每电机2字节 int16)
+ *   0x4FE: 电机5-8 的电流控制帧 (每电机2字节 int16)
  *
- * can1: [0]:0x3FE, [1]:0x200, [2]:0x2FF
- * can2: [3]:0x3FE, [4]:0x200, [5]:0x2FF
+ * can1: [0]:0x3FE (电机1-4), [1]:0x4FE (电机5-8)
+ * can2: [2]:0x3FE (电机1-4), [3]:0x4FE (电机5-8)
  */
-static CANInstance sender_assignment[6] = {
+static CANInstance sender_assignment[4] = {
     [0] = {.can_handle = &hcan1, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD,
            .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [1] = {.can_handle = &hcan1, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD,
+    [1] = {.can_handle = &hcan1, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD,
            .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [2] = {.can_handle = &hcan1, .txconf.StdId = 0x2ff, .txconf.IDE = CAN_ID_STD,
+    [2] = {.can_handle = &hcan2, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD,
            .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [3] = {.can_handle = &hcan2, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD,
-           .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [4] = {.can_handle = &hcan2, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD,
-           .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [5] = {.can_handle = &hcan2, .txconf.StdId = 0x2ff, .txconf.IDE = CAN_ID_STD,
+    [3] = {.can_handle = &hcan2, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD,
            .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
 };
 
-static uint8_t sender_enable_flag[6] = {0}; // 分组发送使能标志
+static uint8_t sender_enable_flag[4] = {0}; // 分组发送使能标志
 
 /* ======================== 私有: MIT 协议 float ↔ uint 映射 ======================== */
 
@@ -190,64 +186,42 @@ static void DMMotorLostCallback(void *motor_ptr)
 /* ======================== 私有: 电机分组 (DJI_MODE 专用) ======================== */
 
 /**
- * @brief 根据电机类型和 ID 自动计算 CAN 分组
+ * @brief 根据电机 ID 自动计算 CAN 分组 (一拖四/DJI_MODE 专用)
  *
- * 与 DJI 的 MotorSenderGrouping() 对齐:
- *  - 根据 motor_type 和 tx_id 计算 rx_id
- *  - 分配 sender_group (0-5) 和 message_num (0-3)
- *  - 检测 ID 冲突
+ * 参照《一拖四版本说明》:
+ *  - 控制帧: 0x3FE (电机1-4), 0x4FE (电机5-8)
+ *  - 反馈帧: 0x300 + motor_ID (电机→MCU)
+ *  - 电机 CAN ID 范围: 0x01~0x08
  *
- * 分组规则:
- *
- *   M2006_DM / M3508_DM:
- *     tx_id 1-4 → sender_group 1(can1) / 4(can2), rx_id = 0x200 + id
- *     tx_id 5-8 → sender_group 0(can1) / 3(can2), rx_id = 0x200 + (id-4)
- *
- *   GM6020_DM:
- *     tx_id 1-4 → sender_group 0(can1) / 3(can2), rx_id = 0x204 + id
- *     tx_id 5-8 → sender_group 2(can1) / 5(can2), rx_id = 0x204 + (id-4)
+ * 分组规则 (所有 DM 电机类型统一):
+ *   tx_id 1-4 → sender_group 0(can1)/2(can2), rx_id = 0x300 + tx_id
+ *   tx_id 5-8 → sender_group 1(can1)/3(can2), rx_id = 0x300 + tx_id
  */
 static void MotorSenderGrouping(DMMotorInstance *motor, CAN_Init_Config_s *config)
 {
     uint8_t motor_id       = config->tx_id - 1; // 下标从 0 开始
     uint8_t motor_send_num;   // 组内编号 0-3
-    uint8_t motor_grouping;   // 组号 0-5
 
-    switch (motor->motor_type) {
-
-    case J4310:
-    case J3507:
-        if (motor_id < 4) {
-            motor_send_num = motor_id;
-            motor_grouping = (config->can_handle == &hcan1) ? 1 : 4;
-        } else {
-            motor_send_num = motor_id - 4;
-            motor_grouping = (config->can_handle == &hcan1) ? 0 : 3;
-        }
-        config->rx_id = 0x200 + motor_id + 1;
-        break;
-
-    case J4340:
-        if (motor_id < 4) {
-            motor_send_num = motor_id;
-            motor_grouping = (config->can_handle == &hcan1) ? 0 : 3;
-        } else {
-            motor_send_num = motor_id - 4;
-            motor_grouping = (config->can_handle == &hcan1) ? 2 : 5;
-        }
-        config->rx_id = 0x204 + motor_id + 1;
-        break;
-
-    default:
-        while (1)
-            LOGERROR("[dm_motor] Unsupported motor type for grouping!");
+    if (motor_id >= 8) {
+        LOGERROR("[dm_motor] Motor ID %d out of range (max 8)!", config->tx_id);
         return;
     }
 
+    /* 统一分组: 0x3FE 管电机1-4, 0x4FE 管电机5-8 */
+    if (motor_id < 4) {
+        motor_send_num = motor_id;
+        motor->sender_group = (config->can_handle == &hcan1) ? 0 : 2;
+    } else {
+        motor_send_num = motor_id - 4;
+        motor->sender_group = (config->can_handle == &hcan1) ? 1 : 3;
+    }
+
+    /* 反馈 CAN ID = 0x300 + motor_ID (参照《一拖四版本说明》) */
+    config->rx_id = 0x300 + config->tx_id;
+
     /* 记录分组信息 */
-    sender_enable_flag[motor_grouping] = 1;
-    motor->message_num  = motor_send_num;
-    motor->sender_group = motor_grouping;
+    sender_enable_flag[motor->sender_group] = 1;
+    motor->message_num = motor_send_num;
 
     /* ID 冲突检测 */
     for (size_t i = 0; i < idx; i++) {
@@ -599,6 +573,8 @@ void DMMotorControl(void)
             if (motor->stop_flag == MOTOR_STOP)
                 pid_ref = 0;
 
+            /* 限幅防止 int16_t 溢出 (三级串级 PID MaxOut 累加可能超 ±32768) */
+            LIMIT_MIN_MAX(pid_ref, -30000.0f, 30000.0f);
             set = (int16_t)pid_ref;
 
             /* 填入分组发送缓冲区 */
@@ -618,7 +594,7 @@ void DMMotorControl(void)
     }
 
     /* ===== 统一发送分组报文 (仅 DJI_MODE 的电机需要) ===== */
-    for (size_t i = 0; i < 6; i++) {
+    for (size_t i = 0; i < 4; i++) {
         if (sender_enable_flag[i]) {
             CANTransmit(&sender_assignment[i], 1);
         }
