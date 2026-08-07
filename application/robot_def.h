@@ -386,7 +386,7 @@ typedef struct
     float yaw_free_angle_upload;
     float yaw_fixed_angle_upload;
     float yaw_relative_angle;
-} Gimbal_Upload_Data_s;
+} Gimbal_Upload_Data_s;// 云台反馈数据结构体
 typedef struct
 {
    int a; 

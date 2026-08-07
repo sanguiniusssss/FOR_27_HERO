@@ -163,6 +163,15 @@ static void DMMotorDecode(CANInstance *_instance)
         m->total_round++;
 
     m->total_angle = m->total_round * 360.0f + m->angle_single_round;
+
+    /* 7. 相对角度 (编码器零点偏移后 → 弧度), 供底盘运动学跟随 */
+    /*    算法与旧版 gimbal.c ecd_relative() 一致 */
+    m->relative_ecd = (int32_t)m->ecd - (int32_t)m->offset_ecd;
+    if (m->relative_ecd > DM_HALF_ECD_RANGE)
+        m->relative_ecd -= (int32_t)DM_ECD_RANGE;
+    else if (m->relative_ecd < -(int32_t)DM_HALF_ECD_RANGE)
+        m->relative_ecd += (int32_t)DM_ECD_RANGE;
+    m->relative_angle = (float)m->relative_ecd * DM_ECD_TO_RAD;
 }
 
 /* ======================== 私有: 离线回调 ======================== */
@@ -302,22 +311,23 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e contr
     motor->motor_controller.current_feedforward_ptr =
         config->controller_param_init_config.current_feedforward_ptr;
 
-    /* --- 5. 根据控制模式偏移 tx_id --- */
-    switch (control_mode) {
-    case DM_MIT_MODE:    /* tx_id 不变 */                              break;
-    case DM_POSVEL_MODE: config->can_init_config.tx_id += 0x100;       break;
-    case DM_VEL_MODE:    config->can_init_config.tx_id += 0x200;       break;
-    case DM_DJI_MODE:    config->can_init_config.tx_id += 0x3FE;       break;
-    default:
-        while (1) LOGERROR("[dm_motor] Undefined control mode!");
-    }
-
-    /* --- 6. DJI_MODE 下自动分组, 其他模式电机独立发送 --- */
+    /* --- 5. DJI_MODE 下自动分组 (在 tx_id 偏移之前, 需要原始 motor_ID) --- */
+    uint8_t original_tx_id = config->can_init_config.tx_id; // 保存原始 ID
     if (control_mode == DM_DJI_MODE) {
         MotorSenderGrouping(motor, &config->can_init_config);
     } else {
         motor->sender_group = 0xFF; // 标记为无效分组
         motor->message_num  = 0;
+    }
+
+    /* --- 6. 根据控制模式偏移 tx_id (CAN 发送 ID) --- */
+    switch (control_mode) {
+    case DM_MIT_MODE:    /* tx_id 不变 */                              break;
+    case DM_POSVEL_MODE: config->can_init_config.tx_id += 0x100;       break;
+    case DM_VEL_MODE:    config->can_init_config.tx_id += 0x200;       break;
+    case DM_DJI_MODE:    config->can_init_config.tx_id = original_tx_id + 0x3FE; break;
+    default:
+        while (1) LOGERROR("[dm_motor] Undefined control mode!");
     }
 
     /* --- 7. 注册 CAN 回调 + Daemon --- */
