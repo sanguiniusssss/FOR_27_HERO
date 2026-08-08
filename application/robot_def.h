@@ -358,6 +358,8 @@ typedef struct
     // float real_vy;
     // float real_wz;
 
+    float yaw_relative_angle; // Yaw 相对角度(rad), 供运动学跟随
+
 //    Self_Cntlr_s ctrl_data; // 自定义控制器数据
 
 } Chassis_Upload_Data_s;

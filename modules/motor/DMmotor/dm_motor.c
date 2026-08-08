@@ -1,7 +1,7 @@
 /**
  * @file dmmotor.c
  * @author Refactored by neozng / Weedy
- * @brief  达妙(DM)系列电机驱动 — DJI风格完整版
+ * @brief  达妙(DM)系列电机驱动 — 一拖四/集中式控制完整版
  * @version 2.0
  * @date 2026-08-05
  *
@@ -411,7 +411,7 @@ void DMMotorShootFlag(DMMotorInstance *motor, uint8_t shoot_flag)
  * 设计要点:
  *  1. 遍历所有已注册 DM 电机
  *  2. 根据 control_mode 派发不同控制逻辑
- *  3. DJI_MODE 下使用串级 PID 框架 (与 DJI 完全相同)
+ *  3. DJI_MODE 下使用串级 PID 框架
  *  4. 统一分组发送, 防止空帧
  *
  * 调用方式:

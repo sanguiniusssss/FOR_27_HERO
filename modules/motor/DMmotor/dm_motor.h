@@ -1,7 +1,7 @@
 /**
  * @file dmmotor.h
  * @author Refactored by neozng / Weedy
- * @brief  达妙(DM)系列电机驱动 — DJI风格完整版
+ * @brief  达妙(DM)系列电机驱动 — 一拖四/集中式控制完整版
  * @version 2.0
  * @date 2026-08-05
  *
@@ -14,22 +14,21 @@
  *  每个电机独立 FreeRTOS 任务          集中式 DMMotorControl(), 放入 MotorControlTask
  *  pid_ref[3] 数组传参                motor_controller.pid_ref 单一标量, 串级流转
  *  手动写 measure.raw_gyro/gyro       other_xxx_feedback_ptr 指针注入
- *  无电机类型分类                      M2006_DM / M3508_DM / GM6020_DM
- *  DMMotorSetRef(6个参数)             DMMotorSetRef(motor, ref) 与 DJI 对齐
+ *  无电机类型分类                      J4310 / J3507 / J4340
+ *  DMMotorSetRef(6个参数)             DMMotorSetRef(motor, ref) 与项目通用框架对齐
  *  无自动分组                          MotorSenderGrouping() 自动分组
  *
- * 与 DJI 电机驱动 (dji_motor.h) 的对齐:
+ * 与项目电机通用框架 (motor_def.h) 的对齐:
  *  - 相同的实例结构布局 (Motor_Controller_s + Motor_Control_Setting_s)
- *  - 相同的 API 命名 (DMMotorInit / DMMotorSetRef / DMMotorControl / DMMotorStop 等)
- *  - 相同的集中式控制模式 (DMMotorControl 遍历所有实例)
+ *  - 相同的 API 命名 (Init / SetRef / Control / Stop 等)
+ *  - 相同的集中式控制模式 (遍历所有实例)
  *  - 相同的分组发送机制 (sender_assignment + sender_enable_flag)
  *
- * === 前置条件: motor_def.h 需要新增 DM 电机类型 ===
+ * === 达妙电机硬件型号 (motor_def.h Motor_Type_e) ===
  *
- * 在 Motor_Type_e 枚举中增加:
- *   M2006_DM,   // 达妙 M2006
- *   M3508_DM,   // 达妙 M3508
- *   GM6020_DM,  // 达妙 GM6020
+ *   J4310,   // DM-J4310 系列 (e.g. J4310-2EC)
+ *   J3507,   // DM-J3507 系列
+ *   J4340,   // DM-J4340 系列
  *
  * @copyright Copyright (c) 2022-2026 HNU YueLu EC all rights reserved
  */
@@ -84,7 +83,7 @@ typedef enum {
 /**
  * @brief 达妙电机反馈测量值
  *
- * 与 DJI_Motor_Measure_s 兼容的字段:
+ * 一拖四协议反馈字段:
  *   ecd, last_ecd, angle_single_round, speed_aps, real_current,
  *   temperature, total_round, total_angle
  *
@@ -94,7 +93,7 @@ typedef enum {
  *   relative_angle_gyro — 陀螺仪相对角度 (rad)
  */
 typedef struct {
-    /* --- 编码器反馈 (与 DJI 兼容) --- */
+    /* --- 编码器反馈 (一拖四协议格式) --- */
     uint16_t ecd;                // 当前编码器值 0-8191
     uint16_t last_ecd;           // 上一次编码器值
     float    angle_single_round;  // 单圈角度 (度)
@@ -102,7 +101,7 @@ typedef struct {
     float    real_current;        // 实际电流 (A), 低通滤波后
     uint8_t  temperature;         // 温度 (℃)
 
-    /* --- 多圈角度 (与 DJI 兼容) --- */
+    /* --- 多圈角度 --- */
     int32_t  total_round;         // 累计圈数
     float    total_angle;         // 总角度 = total_round * 360 + angle_single_round
 
@@ -137,18 +136,17 @@ typedef struct {
 /**
  * @brief 达妙电机实例
  *
- * 与 DJIMotorInstance 对齐的结构:
- *   measure → motor_settings → motor_controller → CAN/Daemon
+ * 通用结构布局: measure → motor_settings → motor_controller → CAN/Daemon
  *
  * DM 特有字段:
  *   control_mode — 区分 MIT/POSVEL/VEL/DJI_MODE
- *   gyro_angle_PID — 陀螺仪角度环 PID (云台专用, 与编码器 angle_PID 独立)
+ *   gyro_angle_PID — 陀螺仪角度环 PID (云台专用)
  *   gyro_feedback_ptr — 陀螺仪角度反馈指针 (指向 IMU 角度)
  *   shoot_flag — 发射前馈标志
  */
 typedef struct {
     /* --- 电机基本信息 --- */
-    Motor_Type_e        motor_type;          // M2006_DM / M3508_DM / GM6020_DM
+    Motor_Type_e        motor_type;          // J4310 / J3507 / J4340
     DMControl_Mode_e    control_mode;        // MIT / POSVEL / VEL / DJI_MODE
 
     /* --- 测量值 --- */
@@ -182,7 +180,7 @@ typedef struct {
 /**
  * @brief 初始化一个达妙电机实例
  *
- * @param config        电机初始化配置 (与 DJI 共用 Motor_Init_Config_s)
+ * @param config        电机初始化配置 (复用 Motor_Init_Config_s)
  * @param control_mode  控制模式 (MIT / POSVEL / VEL / DJI_MODE)
  * @return DMMotorInstance*  电机实例指针, 应用层需保存
  *

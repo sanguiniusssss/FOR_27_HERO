@@ -1,7 +1,6 @@
 // app
 #include "robot_def.h"
 #include "robot_cmd.h"
-#include "upper.h"
 // module
 #include "remote_control.h"
 #include "self_controller.h"
@@ -207,16 +206,16 @@ static void RemoteControlSet()
         }
         else if (rc_data[TEMP].rc.dial == 0)
         {
-            chassis_wz_ref = gimbal_fetch_data.yaw_relative_angle;
+            chassis_wz_ref = chassis_fetch_data.yaw_relative_angle;
             chassis_cmd_send.wz = PIDCalculate(pid_chassis_wz, chassis_wz_ref, 0);
         }
         chassis_cmd_send.vx = -20.0f * (float)rc_data[TEMP].rc.rocker_r_;              // _水平方向
         chassis_cmd_send.vy = 20.0f * (float)rc_data[TEMP].rc.rocker_r1;               // |竖直方向
         gimbal_cmd_send.yaw_add_angle = -(float)rc_data[TEMP].rc.rocker_l_ * 0.001f;   // 水平方向
         gimbal_cmd_send.pitch_add_angle = (float)rc_data[TEMP].rc.rocker_l1 * 0.0005f; // 竖直方向
-        chassis_cmd_send.relative_angle = gimbal_fetch_data.yaw_relative_angle;
+        chassis_cmd_send.relative_angle = chassis_fetch_data.yaw_relative_angle;
              if (switch_is_up(rc_data[TEMP].rc.switch_right))//
-     {
+             {
 
         if(shoot_start_flag==1)
         {   
@@ -316,10 +315,10 @@ static void RemoteControlSet()
 
             gimbal_cmd_send.yaw_add_angle = -0.001f * (float)rc_data[TEMP].rc.rocker_l_;
              gimbal_cmd_send.pitch_add_angle = 0.0004f * (float)rc_data[TEMP].rc.rocker_l1;
-            chassis_cmd_send.relative_angle = gimbal_fetch_data.yaw_relative_angle;
+            chassis_cmd_send.relative_angle = chassis_fetch_data.yaw_relative_angle;
              if (rc_data[TEMP].rc.dial==0)
              {
-                                        chassis_wz_ref = gimbal_fetch_data.yaw_relative_angle;
+                                        chassis_wz_ref = chassis_fetch_data.yaw_relative_angle;
             chassis_cmd_send.wz = PIDCalculate(pid_chassis_wz, chassis_wz_ref, 0);/* code */
              }
              else
@@ -472,7 +471,7 @@ static void RemoteControlSet()
         chassis_cmd_send.vy = 80.0f * (float)rc_data[TEMP].rc.rocker_r1;               // |竖直方向
         gimbal_cmd_send.yaw_add_angle = -(float)rc_data[TEMP].rc.rocker_l_ * 0.001f;   // 水平方向
         gimbal_cmd_send.pitch_add_angle = (float)rc_data[TEMP].rc.rocker_l1 * 0.0005f; // 竖直方向
-                    chassis_wz_ref = gimbal_fetch_data.yaw_relative_angle;
+                    chassis_wz_ref = chassis_fetch_data.yaw_relative_angle;
             chassis_cmd_send.wz = PIDCalculate(pid_chassis_wz, chassis_wz_ref, 0);
         if (switch_is_up(rc_data[TEMP].rc.switch_b))
         {
@@ -576,8 +575,8 @@ static void MouseKeySet()
             chassis_cmd_send.vy = 130000.0f * ((float)rc_data[TEMP].key[KEY_PRESS].w - (float)rc_data[TEMP].key[KEY_PRESS].s); // |竖直方向
                 gimbal_cmd_send.yaw_add_angle = -0.003f * rc_data[TEMP].mouse.x;
                 gimbal_cmd_send.pitch_add_angle = 0.003f * rc_data[TEMP].mouse.y;
-                            chassis_wz_ref = gimbal_fetch_data.yaw_relative_angle;
-                                    chassis_cmd_send.relative_angle = gimbal_fetch_data.yaw_relative_angle;
+                            chassis_wz_ref = chassis_fetch_data.yaw_relative_angle;
+                                    chassis_cmd_send.relative_angle = chassis_fetch_data.yaw_relative_angle;
 
 
             if ( rc_data[TEMP].key[KEY_PRESS].shift)
