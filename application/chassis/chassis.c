@@ -166,8 +166,13 @@ static void YawControl(void)
 {
     SubGetMessage(gimbal_cmd_sub, &gimbal_cmd_recv);
 
-    /* 首次运行: 用当前编码器位置初始化目标角度 */
+    /* 首次运行: 等待 CAN 反馈有效后, 用当前编码器位置初始化目标角度 */
     if (!yaw_inited) {
+        if (motor_yaw->measure.total_angle == 0.0f &&
+            motor_yaw->measure.ecd == 0 &&
+            motor_yaw->measure.last_ecd == 0) {
+            return; // CAN 反馈尚未到达, 等待下一帧
+        }
         yaw_ref    = motor_yaw->measure.total_angle;
         yaw_inited = 1;
     }
