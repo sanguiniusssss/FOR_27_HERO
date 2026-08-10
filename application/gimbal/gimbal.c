@@ -22,8 +22,8 @@ static attitude_t *gimbal_IMU_data; // 云台IMU数据
 // #define GIMBAL_RATE_GAIN 10.0f
 //float yaw_angle_ref, pitch_angle_ref;
    static float relative_angle_gyro = 0;//陀螺仪相对角度反馈
- uint8_t mode_change_flag=0;//模式转换标志位
-  static uint8_t count=0;
+ uint8_t mode_change_flag = 0;//模式转换标志位
+  // count已移除,改为gyro_relative中以电机实例维度判断是否需要初始化
 
 
 
@@ -169,48 +169,59 @@ static void GimbalReset()
  */
 static void GimbalFreeMode()
 {
-   
-    gimbal_feedback_data.yaw_relative_angle=motor_yaw->measure.relative_angle;
+    static float yaw_ecd_accum = 0;         // Yaw 摇杆累积角度(度)
+    static uint16_t yaw_base_ecd = 0;       // 进入 FREE_MODE 时的编码器值
+    static uint8_t yaw_first_free = 1;      // 首次进入 FREE_MODE 标志
+
+    gimbal_feedback_data.yaw_relative_angle = motor_yaw->measure.relative_angle;
+
+    motor_pitch->raw_gyro = gimbal_IMU_data->Pitch;
+
     if (mode_change_flag == 1)
     {
-        motor_yaw->raw_gyro = gimbal_IMU_data->Yaw;
+        yaw_first_free = 1;
+        motor_pitch->measure.offest_angle = motor_pitch->raw_gyro + 180.0f;
         mode_change_flag = 0;
-        count=0;
     }
 
-//     if (1771<motor_yaw->measure.ecd<1971)
-// {
-//     motor_yaw->raw_gyro = gimbal_IMU_data->Yaw;
-//      motor_yaw->measure.offest_angle=motor_yaw ->raw_gyro;/* code */
-// }
-    float yaw_angle_cmd = 0, pitch_angle_cmd = 0;
-    GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);//得到添加角度值
-    gyro_relative(motor_yaw, yaw_angle_cmd,0);//角度转弧度
-    gyro_relative(motor_pitch, pitch_angle_cmd,1);
+    /* ---- Yaw: 编码器闭环, 摇杆通过偏移 offset_ecd 控制角度 ---- */
+    if (yaw_first_free) {
+        yaw_base_ecd = motor_yaw->measure.ecd;   // 记录当前编码器位置
+        yaw_ecd_accum = 0;
+        yaw_first_free = 0;
+    }
+    yaw_ecd_accum += gimbal_cmd_recv.yaw_add_angle;         // 累积摇杆增量(度)
+    {
+        /* 从基准位置计算目标编码器值, 归一化到 [0, 8191] */
+        int32_t delta = (int32_t)(yaw_ecd_accum * 8192.0f / 360.0f);
+        int32_t target = (int32_t)yaw_base_ecd + delta;
+        target = ((target % 8192) + 8192) % 8192;
+        motor_yaw->measure.offset_ecd = (uint16_t)target;
+    }
+    ecd_relative(motor_yaw);
+    DMMotorSetRef(motor_yaw, 0, 0, 0, ecd_maker, 0);       // Yaw: 编码器闭环 target=0
 
-    DMMotorSetRef(motor_yaw, 0, 0, 0, gyro_maker,0);//驱动电机
-   DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker,1);
+    /* ---- Pitch: IMU闭环(不变) ---- */
+    float yaw_angle_cmd = 0, pitch_angle_cmd = 0;
+    GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);
+    gyro_relative(motor_pitch, pitch_angle_cmd, 1);
+    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker, 1);
 }
 static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
 {
      motor->measure.relative_ecd = motor->measure.ecd - motor->measure.offset_ecd;
-    if (motor->measure.relative_ecd > HALF_ECD_RANGE)//4096
-    {
-        motor->measure.relative_ecd -= ECD_RANGE;//8191
-    }
-    else if (motor->measure.relative_ecd < -HALF_ECD_RANGE)
-    {
+    while (motor->measure.relative_ecd > HALF_ECD_RANGE)  // 4096
+        motor->measure.relative_ecd -= ECD_RANGE;         // 8192
+    while (motor->measure.relative_ecd < -HALF_ECD_RANGE)
         motor->measure.relative_ecd += ECD_RANGE;
-    }
     motor->measure.relative_angle=motor->measure.relative_ecd*MOTOR_ECD_TO_RAD;
 }
-static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add,uint8_t goal)//角度制转换成弧度制
+static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add, uint8_t goal)
 {
-if (count==0)
-{
-    motor->measure.offest_angle=motor->raw_gyro; 
-    count=1;/* code */
-}
+    // 每个电机独立判断是否需要初始化:
+    // 如果offest_angle与当前IMU角度(raw_gyro)差异>90度,说明尚未初始化或刚切换模式
+    if (fabsf(motor->measure.offest_angle - motor->raw_gyro) > 90.0f)
+        motor->measure.offest_angle = motor->raw_gyro;
 
   
 
@@ -350,11 +361,11 @@ void GimbalTask()
     // Calculate_Angle(&yaw_angle_ref, motor_yaw);
     motor_yaw->measure.offset_ecd = 1045;//yaw的初始化编码值
     //motor_pitch->measure.offset_ecd = 5794;
-    motor_yaw->measure.gyro = gimbal_IMU_data->Gyro[2];//yaw的陀螺仪速度数据
+    //motor_yaw->measure.gyro = gimbal_IMU_data->Gyro[2];//yaw的陀螺仪速度数据(禁用)
     motor_pitch->measure.gyro = gimbal_IMU_data->Gyro[0];//pitch的陀螺仪速度数据
     motor_pitch->measure.accel=gimbal_IMU_data->Accel[1];//pitch的加速度数据
-    motor_yaw->measure.accel = gimbal_IMU_data->Accel[2];//yaw的加速度数据
-        motor_yaw->measure.gyro_angle = gimbal_IMU_data->Yaw;//yaw的角度数据
+    //motor_yaw->measure.accel = gimbal_IMU_data->Accel[2];//yaw的加速度数据(禁用)
+    //motor_yaw->measure.gyro_angle = gimbal_IMU_data->Yaw;//yaw的角度数据(禁用)
     motor_pitch->measure.gyro_angle = gimbal_IMU_data->Pitch;//pitch的角度数据
     ecd_relative(motor_yaw);//初始化用
     ecd_relative(motor_pitch);//没什么用
