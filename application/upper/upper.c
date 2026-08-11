@@ -13,7 +13,7 @@
 #include "upper.h"
 #include "robot_def.h"
 #include "dji_motor.h"
-#include "dmmotor.h"
+#include "dm_motor.h"
 #include "message_center.h"
 #include "general_def.h"
 #include "user_lib.h"

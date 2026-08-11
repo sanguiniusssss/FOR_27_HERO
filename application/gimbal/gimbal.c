@@ -1,6 +1,6 @@
 #include "gimbal.h"
 #include "robot_def.h"
-#include "dmmotor.h"
+#include "dm_motor.h"
 #include "ins_task.h"
 #include "message_center.h"
 #include "general_def.h"

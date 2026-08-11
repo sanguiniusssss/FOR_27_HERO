@@ -1,17 +1,20 @@
 /**
- * @file dmmotor.c
- * @author Weedy
- * @brief  达妙系列电机的驱动
- * @version beta
- * @date 2025-05-01
+ * @file dm_motor.c
+ * @author Refactored
+ * @brief  达妙(DM)系列电机驱动 — 一拖四/集中式控制
+ * @version 2.0
+ * @date   2026-08-11
  *
- * @todo 等待增加 MIT 模式的完整驱动(目前只有力控,即T_ff),等待添加一拖四模式的驱动，等待修改电机控制任务的实现方式
- * 
- * @copyright Copyright (c) 2022
+ * 架构:
+ *  - 集中式 DMMotorControl(), 在 MotorControlTask 中以 1kHz 调用
+ *  - DJI_MODE: 串级 PID (编码器模式 angle_PID, 陀螺仪模式 gyro_PID→speed_PID)
+ *  - MIT / POSVEL / VEL: 直发模式
+ *  - MotorSenderGrouping(): 自动 CAN 分组 (0x3FE/0x4FE)
  *
+ * @copyright Copyright (c) 2022-2026 HNU YueLu EC all rights reserved
  */
 
-#include "dmmotor.h"
+#include "dm_motor.h"
 #include "memory.h"
 #include "general_def.h"
 #include "user_lib.h"

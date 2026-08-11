@@ -4,7 +4,7 @@
 #include "dji_motor.h"
 #include "step_motor.h"
 #include "servo_motor.h"
-#include "dmmotor.h"
+#include "dm_motor.h"
 
 void MotorControlTask()
 {

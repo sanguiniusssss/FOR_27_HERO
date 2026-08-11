@@ -5,7 +5,7 @@
 #include "message_center.h"
 #include "bsp_dwt.h"
 #include "general_def.h"
-#include "dmmotor.h"
+#include "dm_motor.h"
 
 /* 对于双发射机构的机器人,将下面的数据封装成结构体即可,生成两份shoot应用实例 */
 static DJIMotorInstance *friction_l, *friction_r,*friction_l2,*friction_r2; // 拨盘电机

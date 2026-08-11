@@ -1,5 +1,5 @@
-#ifndef DMMOTOR_H
-#define DMMOTOR_H
+#ifndef DM_MOTOR_H
+#define DM_MOTOR_H
 #include <stdint.h>
 #include "bsp_can.h"
 #include "controller.h"
@@ -164,4 +164,4 @@ void DMMotorControlInit(void);
 void DMMotorControl(void);
 
 void DMMotorShootFlag(DMMotorInstance *motor,uint8_t shoot_flag);
-#endif // !DMMOTOR
+#endif // !DM_MOTOR_H
