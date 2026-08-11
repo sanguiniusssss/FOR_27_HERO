@@ -16,8 +16,6 @@ static Gimbal_Upload_Data_s gimbal_feedback_data; // 回传给cmd的云台状态
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // 来自cmd的控制信息
 static DMMotorInstance *motor_yaw, *motor_pitch;
 static attitude_t *gimbal_IMU_data; // 云台IMU数据
-#define ecd_maker 0//编码模式标志位
-#define gyro_maker 1//陀螺仪模式标志位
 // #define GIMBAL_ANGLE_GAIN 1.0f
 // #define GIMBAL_RATE_GAIN 10.0f
 //float yaw_angle_ref, pitch_angle_ref;
@@ -43,12 +41,13 @@ void GimbalInit()
         .can_init_config.can_handle = &hcan2,
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp = 50, // 4.5
-                .Ki = 0, // 0
-                .Kd = 5, // 0
+                .Kp = 50,
+                .Ki = 0,
+                .Kd = 1.0f,
                 .IntegralLimit = 3000,
-                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_DerivativeFilter,
                 .MaxOut = 15000,
+                .Derivative_LPF_RC = 0.005f,
             },
             .speed_PID = {
                 .Kp = 15, // 4.5
@@ -71,8 +70,8 @@ void GimbalInit()
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
-            .outer_loop_type = SPEED_LOOP,
-            .close_loop_type = ANGLE_LOOP | SPEED_LOOP,
+            .outer_loop_type = ANGLE_LOOP,
+            .close_loop_type = ANGLE_LOOP,
         },
         .motor_type = M2006, // 达妙电机
     };
@@ -119,6 +118,7 @@ void GimbalInit()
     gimbal_Pitch_config.can_init_config.tx_id = 2;
     gimbal_Pitch_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_pitch = DMMotorInit(&gimbal_Pitch_config, DJI_MODE);
+    motor_yaw->measure.offset_ecd = 1045;  // Yaw 物理零点偏移(一次标定)
         DMMotorControlInit();
     gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
@@ -146,19 +146,13 @@ void GimbalInit()
  */
 static void GimbalReset()
 {
-    mode_change_flag=1;
-   // float yaw_ecd_cmd = 0, pitch_ecd_cmd = 0;
-    gyro_relative(motor_pitch, 0,1);
-   // GimbalpositionControl(&yaw_ecd_cmd, &pitch_ecd_cmd);
-    //yaw_ecd_cmd = (yaw_ecd_cmd - motor_yaw->measure.offset_ecd) * 2 / 8192 * 3.14;
-    //pitch_ecd_cmd = (pitch_ecd_cmd - motor_pitch->measure.offset_ecd) * 2 / 8192 * 3.14;
-    DMMotorSetRef(motor_yaw, 0);//初始化yaw
-   // DMMotorSetRef(motor_pitch, 0, 0, 0, ecd_maker,1);
-    DMMotorSetRef(motor_pitch, 0); motor_pitch->maker_flag = gyro_maker;
-    //motor_pitch->raw_gyro = gimbal_IMU_data->Pitch;
-    //motor_pitch->measure.offest_angle=motor_pitch ->raw_gyro;
-  
+    mode_change_flag = 1;
 
+    /* Yaw: 复位到标定零点 */
+    DMMotorSetRef(motor_yaw, 0);
+
+    gyro_relative(motor_pitch, 0, 1);
+    DMMotorSetRef(motor_pitch, 0);
 }
 
 /**
@@ -167,9 +161,8 @@ static void GimbalReset()
  */
 static void GimbalFreeMode()
 {
-    static float yaw_ecd_accum = 0;         // Yaw 摇杆累积角度(度)
-    static uint16_t yaw_base_ecd = 0;       // 进入 FREE_MODE 时的编码器值
-    static uint8_t yaw_first_free = 1;      // 首次进入 FREE_MODE 标志
+    static float  yaw_target_rad = 0;      // Yaw 目标角度(rad)
+    static uint8_t yaw_first_free = 1;     // 首次进入 FREE_MODE 标志
 
     gimbal_feedback_data.yaw_relative_angle = motor_yaw->measure.relative_angle;
 
@@ -182,28 +175,20 @@ static void GimbalFreeMode()
         mode_change_flag = 0;
     }
 
-    /* ---- Yaw: 编码器闭环, 摇杆通过偏移 offset_ecd 控制角度 ---- */
+    /* ---- Yaw: 直接计算目标角度(rad), PID 主动跟踪 ---- */
     if (yaw_first_free) {
-        yaw_base_ecd = motor_yaw->measure.ecd;   // 记录当前编码器位置
-        yaw_ecd_accum = 0;
+        yaw_target_rad = motor_yaw->measure.relative_angle;  // 锁定当前位置
         yaw_first_free = 0;
     }
-    yaw_ecd_accum += gimbal_cmd_recv.yaw_add_angle;         // 累积摇杆增量(度)
-    {
-        /* 从基准位置计算目标编码器值, 归一化到 [0, 8191] */
-        int32_t delta = (int32_t)(yaw_ecd_accum * 8192.0f / 360.0f);
-        int32_t target = (int32_t)yaw_base_ecd + delta;
-        target = ((target % 8192) + 8192) % 8192;
-        motor_yaw->measure.offset_ecd = (uint16_t)target;
-    }
-    ecd_relative(motor_yaw);
-    DMMotorSetRef(motor_yaw, 0);       // Yaw: 编码器闭环 target=0
+    yaw_target_rad += gimbal_cmd_recv.yaw_add_angle * (PI / 180.0f);
+    /* 不对 yaw_target_rad 做 ±π 包裹: 让它连续增长, dm_motor 内部解缠 */
+    DMMotorSetRef(motor_yaw, yaw_target_rad);
 
     /* ---- Pitch: IMU闭环(不变) ---- */
     float yaw_angle_cmd = 0, pitch_angle_cmd = 0;
     GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);
     gyro_relative(motor_pitch, pitch_angle_cmd, 1);
-    DMMotorSetRef(motor_pitch, 0); motor_pitch->maker_flag = gyro_maker;
+    DMMotorSetRef(motor_pitch, 0);
 }
 static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
 {
@@ -357,7 +342,6 @@ void GimbalTask()
     DMMotorShootFlag(motor_yaw,0);        //发射前馈
     // vofa_justfloat_output(arr, 2 , &huart1);
     // Calculate_Angle(&yaw_angle_ref, motor_yaw);
-    motor_yaw->measure.offset_ecd = 1045;//yaw的初始化编码值
     //motor_pitch->measure.offset_ecd = 5794;
     //motor_yaw->measure.gyro = gimbal_IMU_data->Gyro[2];//yaw的陀螺仪速度数据(禁用)
     motor_pitch->measure.gyro = gimbal_IMU_data->Gyro[0];//pitch的陀螺仪速度数据

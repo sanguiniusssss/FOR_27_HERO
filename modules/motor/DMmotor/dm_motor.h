@@ -133,7 +133,6 @@ typedef struct
         // 分组发送设置
     uint8_t sender_group;
     uint8_t message_num;
-    uint8_t maker_flag;
      Motor_Controller_s motor_controller;
      uint8_t shoot_flag_dm;
  

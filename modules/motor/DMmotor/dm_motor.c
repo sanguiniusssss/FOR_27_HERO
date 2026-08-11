@@ -22,6 +22,7 @@
 #include "daemon.h"
 #include "stdlib.h"
 #include "bsp_log.h"
+#include <math.h>
 
 static uint8_t idx;
 static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];
@@ -247,7 +248,6 @@ void DMMotorOuterLoop(DMMotorInstance *motor, Closeloop_Type_e type)
  */
 void DMMotorControl(void)
 {
-    uint8_t motor_flag;
     int16_t set;
 
     /* 遍历所有 DM 电机 */
@@ -255,8 +255,6 @@ void DMMotorControl(void)
         DMMotorInstance *motor = dm_motor_instance[i];
         Motor_Control_Setting_s *setting = &motor->motor_settings;
         DM_Motor_Measure_s *measure = &motor->measure;
-        motor_flag = motor->maker_flag;
-
         float ref = motor->motor_controller.pid_ref;
 
         switch (motor->control_mode) {
@@ -325,16 +323,29 @@ void DMMotorControl(void)
         {
             float pid_measure, pid_out;
 
-            if (motor_flag == 1)  // 陀螺仪模式
+            if (setting->outer_loop_type == SPEED_LOOP)  // 陀螺仪模式
             {
                 pid_measure = measure->relative_angle_gyro;
                 float pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, ref);
                 pid_measure = measure->gyro;
                 pid_out = PIDCalculate(&motor->speed_PID, pid_measure, pid_gyro_out);
             }
-            else  // 编码器模式
+            else  // 编码器模式 (ANGLE_LOOP)
             {
                 pid_measure = measure->relative_angle;  // rad, ±π
+
+                /* 解缠: 将 ±π 内折叠的测量值展开为与上次连续的坐标
+                   用 roundf 处理任意圈数, 不仅是 ±1 圈 */
+                float last_m = motor->angle_PID.Last_Measure;
+                float delta = pid_measure - last_m;
+                if (fabsf(delta) > PI) {
+                    float wraps = roundf(delta / (2.0f * PI));
+                    pid_measure -= wraps * 2.0f * PI;
+                }
+
+                /* 在连续空间直接做差, 不归一化 ——
+                   ref(连续) 和 pid_measure(解缠连续) 在同一坐标系,
+                   归一化会错误地把多圈误差塌缩成短路径 (Reset 也受益) */
                 pid_out = PIDCalculate(&motor->angle_PID, pid_measure, ref);
             }
 
