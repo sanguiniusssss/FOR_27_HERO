@@ -5,10 +5,7 @@
 #include "message_center.h"
 #include "general_def.h"
 #include "bmi088.h"
-#include "servo_motor.h"
-#include "vofa.h"
 
-static ServoInstance *servo_yaw_motor, *servo_pitch_motor;
 
 static Publisher_t *gimbal_pub;                   // 云台应用消息发布者(云台反馈给cmd)
 static Subscriber_t *gimbal_sub;                  // cmd控制消息订阅者
@@ -16,24 +13,12 @@ static Gimbal_Upload_Data_s gimbal_feedback_data; // 回传给cmd的云台状态
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // 来自cmd的控制信息
 static DMMotorInstance *motor_yaw, *motor_pitch;
 static attitude_t *gimbal_IMU_data; // 云台IMU数据
-// #define GIMBAL_ANGLE_GAIN 1.0f
-// #define GIMBAL_RATE_GAIN 10.0f
-//float yaw_angle_ref, pitch_angle_ref;
-   static float relative_angle_gyro = 0;//陀螺仪相对角度反馈
  uint8_t mode_change_flag = 0;//模式转换标志位
-  // count已移除,改为gyro_relative中以电机实例维度判断是否需要初始化
 
 
-
-static void GimbalpositionControl(float *yaw_angle_cmd, float *pitch_angle_cmd);//编码器控制模式
-static void GimbalIMUControl();//陀螺仪控制模式
-static void GimbalModeControl();//模式转换控制
-static void GimbalReset();//初始化云台
-static void GimbalFreeMode();//自由模式
-static void ecd_relative(DMMotorInstance *motor);//编码器转换成弧度制
+static void GimbalIMUControl(float *yaw_angle_relative, float *pitch_angle_relative);
 static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add, uint8_t goal);//角度制转换成弧度制
 
-//static void GimbalpositionControl(float*yaw_angle_cmd,float*pitch_angle_cmd);
 void GimbalInit()
 {
     gimbal_IMU_data = INS_Init();
@@ -123,23 +108,6 @@ void GimbalInit()
     gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
 }
-
-/**
- * @brief 云台角度限幅
- *
- */
-// static void GimbalAngleConstrain(float *yaw, float *pitch)
-// {
-//     if (*yaw >= YAW_MAX_ANGLE)
-//         *yaw = YAW_MAX_ANGLE;
-//     else if (*yaw <= YAW_MIN_ANGLE)
-//         *yaw = YAW_MIN_ANGLE;
-
-//     if (*pitch >= PITCH_MAX_ANGLE)
-//         *pitch = PITCH_MAX_ANGLE;
-//     else if (*pitch <= PITCH_MIN_ANGLE)
-//         *pitch = PITCH_MIN_ANGLE;
-// }
 /**
  * @brief 云台初始化模式
  *
@@ -181,7 +149,9 @@ static void GimbalFreeMode()
         yaw_first_free = 0;
     }
     yaw_target_rad += gimbal_cmd_recv.yaw_add_angle * (PI / 180.0f);
-    /* 不对 yaw_target_rad 做 ±π 包裹: 让它连续增长, dm_motor 内部解缠 */
+    /* 包裹到 ±π: ref 是角度不是累积圈数, dm_motor 负责映射到连续空间 */
+    if (yaw_target_rad > PI)       yaw_target_rad -= 2.0f * PI;
+    if (yaw_target_rad < -PI)      yaw_target_rad += 2.0f * PI;
     DMMotorSetRef(motor_yaw, yaw_target_rad);
 
     /* ---- Pitch: IMU闭环(不变) ---- */
@@ -270,62 +240,30 @@ static void GimbalIMUControl(float *yaw_angle_relative, float *pitch_angle_relat
 
     return;
 }
-static void GimbalpositionControl(float *yaw_angle_cmd, float *pitch_angle_cmd) // 位置控制
+
+static void GimbalModeControl()
 {
-    if (yaw_angle_cmd == NULL || pitch_angle_cmd == NULL)
-        return;
+    static gimbal_mode_e last_mode = GIMBAL_NOMOVE;
 
-    // 计算云台角度指令
-    *yaw_angle_cmd = gimbal_cmd_recv.yaw_ecd;
-    *pitch_angle_cmd = gimbal_cmd_recv.pitch_ecd;
-}
-
-/**
- * @brief 根据模式选择控制方式
- *
- */
-// static void GimbalModeControl()
-// {
-//     switch (gimbal_cmd_recv.gimbal_mode)
-//     {
-//     case GIMBAL_RESET:
-//         GimbalReset(); /* code */
-//         motor_yaw->stop_flag = MOTOR_ENALBED;
-//         motor_pitch->stop_flag = MOTOR_ENALBED;
-//         break;
-//     case GIMBAL_FREE_MODE:
-//         GimbalFreeMode(); /* code */
-//         motor_yaw->stop_flag = MOTOR_ENALBED;
-//         break;
-//     case GIMBAL_NOMOVE:
-//         motor_yaw->stop_flag = MOTOR_STOP;
-//         motor_pitch->stop_flag = MOTOR_STOP;
-//         break;
- 
-//     default:
-//         break;
-//     }
-
-// }
-static void GimbalModeControl()//模式转换控制
-{
-    if (gimbal_cmd_recv.gimbal_mode==GIMBAL_RESET)
-    {
-         GimbalReset(); /* code */
+    if (gimbal_cmd_recv.gimbal_mode == GIMBAL_RESET) {
+        GimbalReset();
         motor_yaw->stop_flag = MOTOR_ENALBED;
         motor_pitch->stop_flag = MOTOR_ENALBED;
     }
-    else if (gimbal_cmd_recv.gimbal_mode==GIMBAL_FREE_MODE)
-    {
-                GimbalFreeMode(); /* code */
+    else if (gimbal_cmd_recv.gimbal_mode == GIMBAL_FREE_MODE) {
+        /* 从其他模式切回 FREE 时重新锁定当前位置, 防止跳回旧目标 */
+        if (last_mode != GIMBAL_FREE_MODE)
+            mode_change_flag = 1;
+        GimbalFreeMode();
         motor_yaw->stop_flag = MOTOR_ENALBED;
         motor_pitch->stop_flag = MOTOR_ENALBED;
     }
-   else if (gimbal_cmd_recv.gimbal_mode==GIMBAL_NOMOVE)
-   {
-            motor_yaw->stop_flag = MOTOR_STOP;
+    else if (gimbal_cmd_recv.gimbal_mode == GIMBAL_NOMOVE) {
+        motor_yaw->stop_flag = MOTOR_STOP;
         motor_pitch->stop_flag = MOTOR_STOP;
-   }
+    }
+
+    last_mode = gimbal_cmd_recv.gimbal_mode;
 }
 
 /* 机器人云台控制核心任务,后续考虑只保留IMU控制,不再需要电机的反馈 */
@@ -335,25 +273,15 @@ void GimbalTask()
     // 后续增加未收到数据的处理
     SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
         motor_pitch->raw_gyro = -4.5f;//pitch的初始化角度
-    // float arr[2];
-    // arr[0]=motor_yaw->measure.relative_angle_gyro*1000000;
-    // arr[1]=0;
     DMMotorShootFlag(motor_pitch,gimbal_cmd_recv.shoot_flag);//不记得了应该没用
     DMMotorShootFlag(motor_yaw,0);        //发射前馈
-    // vofa_justfloat_output(arr, 2 , &huart1);
-    // Calculate_Angle(&yaw_angle_ref, motor_yaw);
-    //motor_pitch->measure.offset_ecd = 5794;
-    //motor_yaw->measure.gyro = gimbal_IMU_data->Gyro[2];//yaw的陀螺仪速度数据(禁用)
     motor_pitch->measure.gyro = gimbal_IMU_data->Gyro[0];//pitch的陀螺仪速度数据
     motor_pitch->measure.accel=gimbal_IMU_data->Accel[1];//pitch的加速度数据
-    //motor_yaw->measure.accel = gimbal_IMU_data->Accel[2];//yaw的加速度数据(禁用)
-    //motor_yaw->measure.gyro_angle = gimbal_IMU_data->Yaw;//yaw的角度数据(禁用)
     motor_pitch->measure.gyro_angle = gimbal_IMU_data->Pitch;//pitch的角度数据
     ecd_relative(motor_yaw);//初始化用
     ecd_relative(motor_pitch);//没什么用
    gimbal_feedback_data.yaw_relative_angle= motor_yaw->measure.relative_angle ;//传给地盘进行运动学解算
     GimbalModeControl();
-    // ServoMotorControl(); // 驱动舵机转动
     //  推送消息
     PubPushMessage(gimbal_pub, (void *)&gimbal_feedback_data);
 }

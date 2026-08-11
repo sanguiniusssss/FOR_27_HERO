@@ -343,10 +343,12 @@ void DMMotorControl(void)
                     pid_measure -= wraps * 2.0f * PI;
                 }
 
-                /* 在连续空间直接做差, 不归一化 ——
-                   ref(连续) 和 pid_measure(解缠连续) 在同一坐标系,
-                   归一化会错误地把多圈误差塌缩成短路径 (Reset 也受益) */
-                pid_out = PIDCalculate(&motor->angle_PID, pid_measure, ref);
+                /* ref 是 ±π 内的角度目标, pid_measure 已解缠到连续空间.
+                   将 ref 映射到离 pid_measure 最近的 2π 等效值,
+                   保证误差 ≤ π (始终走最短路径回正) */
+                float wraps = roundf((pid_measure - ref) / (2.0f * PI));
+                float ref_cont = ref + wraps * 2.0f * PI;
+                pid_out = PIDCalculate(&motor->angle_PID, pid_measure, ref_cont);
             }
 
             if (motor->stop_flag == MOTOR_STOP)
