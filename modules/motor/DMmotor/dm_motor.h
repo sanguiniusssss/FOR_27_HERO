@@ -56,7 +56,6 @@ typedef struct
     float relative_angle_gyro;
     float gyro;
     float offest_angle;
-    float accel;
 } DM_Motor_Measure_s;
 
 typedef struct
@@ -118,13 +117,8 @@ typedef struct
     PIDInstance speed_PID;
     PIDInstance angle_PID;
     PIDInstance current_PID;
-    float *other_angle_feedback_ptr;
-    float *other_speed_feedback_ptr;
-    float *speed_feedforward_ptr;
-    float *gyro_feedforward_ptr;
+
     float raw_gyro;
-    float relative_gyro_yaw;
-    float relative_gyro_pitch;
     Motor_Working_Type_e stop_flag;
     CANInstance *motor_can_instace;
     DaemonInstance *motor_daemon;
@@ -134,7 +128,6 @@ typedef struct
     uint8_t sender_group;
     uint8_t message_num;
      Motor_Controller_s motor_controller;
-     uint8_t shoot_flag_dm;
  
 } DMMotorInstance;
 

@@ -57,7 +57,6 @@ static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)
 
 static void DMMotorDecode(CANInstance *motor_can)
 {
-    uint16_t tmp; // 用于暂存解析值,稍后转换成float数据,避免多次创建临时变量
     uint8_t *rxbuff = motor_can->rx_buff;
     DMMotorInstance *motor = (DMMotorInstance *)motor_can->id;
     DM_Motor_Measure_s *measure = &(motor->measure); // 将can实例中保存的id转换成电机实例的指针
@@ -77,36 +76,6 @@ static void DMMotorDecode(CANInstance *motor_can)
     else if (measure->ecd - measure->last_ecd < -4096)
         measure->total_round++;
     measure->total_angle = measure->total_round * 360 + measure->angle_single_round;
-    //  measure->offset_ecd = 1871;
-    //  measure->relative_ecd = measure->ecd - measure->offset_ecd;
-    // if (measure->relative_ecd > HALF_ECD_RANGE)//4096
-    // {
-    //     measure->relative_ecd -= ECD_RANGE;//8191
-    // }
-    // else if (measure->relative_ecd < -HALF_ECD_RANGE)
-    // {
-    //     measure->relative_ecd += ECD_RANGE; 
-    // }
-    // measure->relative_angle=measure->relative_ecd*MOTOR_ECD_TO_RAD;
-
-
-
-
-
-// measure->total_angle = 0;
-    // int aaaa=0;
-    //  measure->last_position = measure->position;
-    // tmp = (uint16_t)((rxbuff[1] << 8) | rxbuff[2]);
-    // measure->position = uint_to_float(tmp, DM_P_MIN, DM_P_MAX, 16);
-
-    // tmp = (uint16_t)((rxbuff[3] << 4) | rxbuff[4] >> 4);
-    // measure->velocity = uint_to_float(tmp, DM_V_MIN, DM_V_MAX, 12);
-
-    // tmp = (uint16_t)(((rxbuff[4] & 0x0f) << 8) | rxbuff[5]);
-    // measure->torque = uint_to_float(tmp, DM_T_MIN, DM_T_MAX, 12);
-
-    // measure->T_Mos = (float)rxbuff[6];
-    // measure->T_Rotor = (float)rxbuff[7];
 }
 
 static void DMMotorLostCallback(void *motor_ptr)
@@ -159,8 +128,6 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
     PIDInit(&motor->gyro_PID, &config->controller_param_init_config.gyro_PID);
     PIDInit(&motor->speed_PID, &config->controller_param_init_config.speed_PID);
     PIDInit(&motor->angle_PID, &config->controller_param_init_config.angle_PID);
-    motor->other_angle_feedback_ptr = config->controller_param_init_config.other_angle_feedback_ptr;
-    motor->other_speed_feedback_ptr = config->controller_param_init_config.other_speed_feedback_ptr;
 
     config->can_init_config.can_module_callback = DMMotorDecode;
     config->can_init_config.id = motor;
@@ -222,9 +189,11 @@ void DMMotorEnable(DMMotorInstance *motor)
 {
     motor->stop_flag = MOTOR_ENALBED;
 }
-void DMMotorShootFlag(DMMotorInstance *motor,uint8_t shoot_flag)
+void DMMotorShootFlag(DMMotorInstance *motor, uint8_t shoot_flag)
 {
-    motor->shoot_flag_dm = shoot_flag;
+    (void)motor;
+    (void)shoot_flag;
+    // 预留接口, 暂未实现
 }
 
 

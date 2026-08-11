@@ -193,7 +193,6 @@ void GimbalTask()
 
     /* 设置 Pitch 陀螺仪数据 (dm_motor 内部控制相对角度计算) */
     DMMotorSetGyro(motor_pitch, gimbal_IMU_data->Pitch, gimbal_IMU_data->Gyro[0]);
-    motor_pitch->measure.accel = gimbal_IMU_data->Accel[1];  // 加速度计(预留)
 
     DMMotorShootFlag(motor_pitch, gimbal_cmd_recv.shoot_flag);
     DMMotorShootFlag(motor_yaw, 0);
