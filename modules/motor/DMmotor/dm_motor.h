@@ -8,12 +8,29 @@
 
 #define DM_MOTOR_CNT 4
 
-#define SPEED_SMOOTH_COEF 0.85f      // 最好大于0.85
-#define CURRENT_SMOOTH_COEF 0.9f     // 必须大于0.9
-#define ECD_ANGLE_COEF_DM 0.043945f // (360/8192),将编码器值转化为角度制
-#define MOTOR_ECD_TO_RAD 0.000766990394f //     2*  PI  /8192
-#define ECD_RANGE       8191
-#define HALF_ECD_RANGE  4096
+#define DM_SPEED_SMOOTH_COEF 0.85f      // 最好大于0.85
+#define DM_CURRENT_SMOOTH_COEF 0.9f     // 必须大于0.9
+#define DM_ECD_ANGLE_COEF 0.043945f // (360/8192),将编码器值转化为角度制
+#define DM_ECD_TO_RAD 0.000766990394f //     2*  PI  /8192
+#define DM_ECD_RANGE       8191
+#define DM_HALF_ECD_RANGE  4096
+/* ========== 协议常量 ========== */
+#define DM_CMD_HEADER_LEN         7
+#define DM_CMD_HEADER_PAD         0xFF
+#define DM_FEEDBACK_ID_BASE       0x300
+#define DM_CTRL_ID_1TO4           0x3FE
+#define DM_CTRL_ID_5TO8           0x4FE
+#define DM_TX_ID_OFFSET_POSVEL    0x100
+#define DM_TX_ID_OFFSET_VEL       0x200
+#define DM_TX_ID_OFFSET_DJI       0x3FE
+
+/* ========== 阈值 ========== */
+#define DM_DAEMON_RELOAD_CNT      10
+#define DM_GYRO_INIT_THRESHOLD    90.0f
+
+/* ========== 角度常量 ========== */
+#define DM_ANGLE_360              360.0f
+#define DM_ANGLE_180              180.0f
 #define DM_P_MIN  (-12.5f)
 #define DM_P_MAX  12.5f
 #define DM_V_MIN  (-60.0f)
@@ -29,16 +46,10 @@ typedef enum
     DJI_MODE,           // 一拖四模式
 } DMControl_Mode_e;
 
-typedef struct 
+typedef struct
 {
-    uint8_t id;
-    uint8_t state;
     float velocity;
-    float last_position;
     float position;
-    float torque;
-    float T_Mos;
-    float T_Rotor;
     int32_t total_round;
     uint16_t ecd;
     uint16_t last_ecd;
@@ -55,7 +66,7 @@ typedef struct
     float gyro_angle;
     float relative_angle_gyro;
     float gyro;
-    float offest_angle;
+    float offset_angle;
 } DM_Motor_Measure_s;
 
 typedef struct
@@ -92,24 +103,6 @@ typedef struct
 
 typedef struct
 {
-    union
-    {
-        float position_des;
-        uint8_t data[4];
-    } p_des;
-    union
-    {
-        float velocity_des;
-        uint8_t data[4];
-    } v_des;
-    union
-    {
-        float torque_des;
-        uint8_t data[4];
-    } t_des;
-} DMMotor_Send_DJI_s;
-typedef struct
-{
     Motor_Type_e        motor_type;
     DMControl_Mode_e control_mode;
     DM_Motor_Measure_s measure;
@@ -117,13 +110,11 @@ typedef struct
     PIDInstance gyro_PID;
     PIDInstance speed_PID;
     PIDInstance angle_PID;
-    PIDInstance current_PID;
 
     float raw_gyro;
     Motor_Working_Type_e stop_flag;
-    CANInstance *motor_can_instace;
+    CANInstance *motor_can_instance;
     DaemonInstance *motor_daemon;
-    uint32_t lost_cnt;
     uint32_t feed_cnt;       // CAN反馈计数器
         // 分组发送设置
     uint8_t sender_group;

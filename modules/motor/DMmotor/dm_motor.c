@@ -27,10 +27,10 @@
 static uint8_t idx;
 static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];
 static CANInstance sender_assignment[4] = {
-    [0] = {.can_handle = &hcan1, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [1] = {.can_handle = &hcan1, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [2] = {.can_handle = &hcan2, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [3] = {.can_handle = &hcan2, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [0] = {.can_handle = &hcan1, .txconf.StdId = DM_CTRL_ID_1TO4, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [1] = {.can_handle = &hcan1, .txconf.StdId = DM_CTRL_ID_5TO8, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [2] = {.can_handle = &hcan2, .txconf.StdId = DM_CTRL_ID_1TO4, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [3] = {.can_handle = &hcan2, .txconf.StdId = DM_CTRL_ID_5TO8, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
 };
 
 static uint8_t sender_enable_flag[4] = {0};
@@ -40,18 +40,11 @@ static uint16_t float_to_uint(float x, float x_min, float x_max, uint8_t bits)
     float offset = x_min;
     return (uint16_t)((x - offset) * ((float)((1 << bits) - 1)) / span);
 }
-static float uint_to_float(int x_int, float x_min, float x_max, int bits)
-{
-    float span = x_max - x_min;
-    float offset = x_min;
-    return ((float)x_int) * span / ((float)((1 << bits) - 1)) + offset;
-}
-
 static void DMMotorSetMode(DMMotor_Mode_e cmd, DMMotorInstance *motor)
 {
-    memset(motor->motor_can_instace->tx_buff, 0xff, 7);  // 发送电机指令的时候前面7bytes都是0xff
-    motor->motor_can_instace->tx_buff[7] = (uint8_t)cmd; // 最后一位是命令id
-    CANTransmit(motor->motor_can_instace, 1);
+    memset(motor->motor_can_instance->tx_buff, DM_CMD_HEADER_PAD, DM_CMD_HEADER_LEN);
+    motor->motor_can_instance->tx_buff[DM_CMD_HEADER_LEN] = (uint8_t)cmd;
+    CANTransmit(motor->motor_can_instance, 1);
 }
 
 
@@ -65,17 +58,17 @@ static void DMMotorDecode(CANInstance *motor_can)
     motor->feed_cnt++;
     measure->last_ecd = measure->ecd;
     measure->ecd = ((uint16_t)rxbuff[0]) << 8 | rxbuff[1];
-    measure->angle_single_round = ECD_ANGLE_COEF_DM * (float)measure->ecd;
-    measure->speed_aps = (1.0f - SPEED_SMOOTH_COEF) * measure->speed_aps +
-                         RPM_2_ANGLE_PER_SEC * SPEED_SMOOTH_COEF * (float)((int16_t)(rxbuff[2] << 8 | rxbuff[3]));
-    measure->real_current = (1.0f - CURRENT_SMOOTH_COEF) * measure->real_current +
-                            CURRENT_SMOOTH_COEF * (float)((int16_t)(rxbuff[4] << 8 | rxbuff[5]));
+    measure->angle_single_round = DM_ECD_ANGLE_COEF * (float)measure->ecd;
+    measure->speed_aps = (1.0f - DM_SPEED_SMOOTH_COEF) * measure->speed_aps +
+                         RPM_2_ANGLE_PER_SEC * DM_SPEED_SMOOTH_COEF * (float)((int16_t)(rxbuff[2] << 8 | rxbuff[3]));
+    measure->real_current = (1.0f - DM_CURRENT_SMOOTH_COEF) * measure->real_current +
+                            DM_CURRENT_SMOOTH_COEF * (float)((int16_t)(rxbuff[4] << 8 | rxbuff[5]));
     measure->temperature = rxbuff[6];
-        if (measure->ecd - measure->last_ecd > 4096)
+        if (measure->ecd - measure->last_ecd > DM_HALF_ECD_RANGE)
         measure->total_round--;
-    else if (measure->ecd - measure->last_ecd < -4096)
+    else if (measure->ecd - measure->last_ecd < -DM_HALF_ECD_RANGE)
         measure->total_round++;
-    measure->total_angle = measure->total_round * 360 + measure->angle_single_round;
+    measure->total_angle = measure->total_round * DM_ANGLE_360 + measure->angle_single_round;
 }
 
 static void DMMotorLostCallback(void *motor_ptr)
@@ -91,7 +84,7 @@ static void MotorSenderGrouping(DMMotorInstance *motor, CAN_Init_Config_s *confi
     if (motor_id >= 8) return;
 
     /* 反馈 CAN ID = 0x300 + motor_ID (一拖四手册) */
-    config->rx_id = 0x300 + config->tx_id;
+    config->rx_id = DM_FEEDBACK_ID_BASE + config->tx_id;
 
     /* 分组: motor 1-4 → 0x3FE, motor 5-8 → 0x4FE */
     if (motor_id < 4) {
@@ -136,7 +129,7 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
     Daemon_Init_Config_s conf = {
         .callback = DMMotorLostCallback,
         .owner_id = motor,
-        .reload_count = 10,
+        .reload_count = DM_DAEMON_RELOAD_CNT,
     };
     motor->motor_daemon = DaemonRegister(&conf);
 
@@ -149,20 +142,20 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
     case MIT_MODE:
         break;
     case POSVEL_MODE:
-        config->can_init_config.tx_id += 0x100;
+        config->can_init_config.tx_id += DM_TX_ID_OFFSET_POSVEL;
         break;
     case VEL_MODE:
-        config->can_init_config.tx_id += 0x200;
+        config->can_init_config.tx_id += DM_TX_ID_OFFSET_VEL;
         break;
     case DJI_MODE:  // 等待修改
-        config->can_init_config.tx_id += 0x3FE;
+        config->can_init_config.tx_id += DM_TX_ID_OFFSET_DJI;
         break;
     default:
         while (1)
             LOGERROR("[dm_motor] undefined control mode!");
         break;
     }
-    motor->motor_can_instace = CANRegister(&config->can_init_config);
+    motor->motor_can_instance = CANRegister(&config->can_init_config);
 
     DMMotorEnable(motor);
     DMMotorSetMode(DM_CMD_MOTOR_MODE, motor);
@@ -246,11 +239,11 @@ void DMMotorControl(void)
         /* 编码器 -> relative_angle (原 ecd_relative) */
         if (motor->control_mode == DJI_MODE) {
             measure->relative_ecd = measure->ecd - measure->offset_ecd;
-            while (measure->relative_ecd > HALF_ECD_RANGE)
-                measure->relative_ecd -= ECD_RANGE;
-            while (measure->relative_ecd < -HALF_ECD_RANGE)
-                measure->relative_ecd += ECD_RANGE;
-            measure->relative_angle = measure->relative_ecd * MOTOR_ECD_TO_RAD;
+            while (measure->relative_ecd > DM_HALF_ECD_RANGE)
+                measure->relative_ecd -= DM_ECD_RANGE;
+            while (measure->relative_ecd < -DM_HALF_ECD_RANGE)
+                measure->relative_ecd += DM_ECD_RANGE;
+            measure->relative_angle = measure->relative_ecd * DM_ECD_TO_RAD;
         }
 
         switch (motor->control_mode) {
@@ -269,7 +262,7 @@ void DMMotorControl(void)
                 if (motor->stop_flag == MOTOR_STOP)
                     mit.torque_des = float_to_uint(0, DM_T_MIN, DM_T_MAX, 12);
 
-                CANInstance *can = motor->motor_can_instace;
+                CANInstance *can = motor->motor_can_instance;
                 can->tx_buff[0] = (uint8_t)(mit.position_des >> 8);
                 can->tx_buff[1] = (uint8_t)(mit.position_des);
                 can->tx_buff[2] = (uint8_t)(mit.velocity_des >> 4);
@@ -296,8 +289,8 @@ void DMMotorControl(void)
                 posvel.v_des.velocity_des = vel_ff;
                 if (motor->stop_flag == MOTOR_STOP)
                     posvel.v_des.velocity_des = 0;
-                memcpy(motor->motor_can_instace->tx_buff, &posvel, 8);
-                CANTransmit(motor->motor_can_instace, 1);
+                memcpy(motor->motor_can_instance->tx_buff, &posvel, 8);
+                CANTransmit(motor->motor_can_instance, 1);
             }
             break;
 
@@ -310,8 +303,8 @@ void DMMotorControl(void)
                 vel.v_des.velocity_des = ref;
                 if (motor->stop_flag == MOTOR_STOP)
                     vel.v_des.velocity_des = 0;
-                memcpy(motor->motor_can_instace->tx_buff, &vel, 4);
-                CANTransmit(motor->motor_can_instace, 1);
+                memcpy(motor->motor_can_instance->tx_buff, &vel, 4);
+                CANTransmit(motor->motor_can_instance, 1);
             }
             break;
 
@@ -322,19 +315,19 @@ void DMMotorControl(void)
             if (setting->outer_loop_type == SPEED_LOOP)  // 陀螺仪模式
             {
                 /* 陀螺仪相对角度计算 (原 gyro_relative)
-                   自动初始化 offest_angle */
-                if (fabsf(measure->offest_angle - motor->raw_gyro) > 90.0f)
-                    measure->offest_angle = motor->raw_gyro;
-                measure->relative_angle_gyro = measure->gyro_angle - measure->offest_angle;
-                while (measure->relative_angle_gyro > 180.0f)
-                    measure->relative_angle_gyro -= 360.0f;
-                while (measure->relative_angle_gyro < -180.0f)
-                    measure->relative_angle_gyro += 360.0f;
-                while (measure->relative_angle_gyro > 180.0f)
-                    measure->relative_angle_gyro -= 360.0f;
-                while (measure->relative_angle_gyro < -180.0f)
-                    measure->relative_angle_gyro += 360.0f;
-                measure->relative_angle_gyro *= (PI / 180.0f);  // 转弧度
+                   自动初始化 offset_angle */
+                if (fabsf(measure->offset_angle - motor->raw_gyro) > DM_GYRO_INIT_THRESHOLD)
+                    measure->offset_angle = motor->raw_gyro;
+                measure->relative_angle_gyro = measure->gyro_angle - measure->offset_angle;
+                while (measure->relative_angle_gyro > DM_ANGLE_180)
+                    measure->relative_angle_gyro -= DM_ANGLE_360;
+                while (measure->relative_angle_gyro < -DM_ANGLE_180)
+                    measure->relative_angle_gyro += DM_ANGLE_360;
+                while (measure->relative_angle_gyro > DM_ANGLE_180)
+                    measure->relative_angle_gyro -= DM_ANGLE_360;
+                while (measure->relative_angle_gyro < -DM_ANGLE_180)
+                    measure->relative_angle_gyro += DM_ANGLE_360;
+                measure->relative_angle_gyro *= ((float)PI / DM_ANGLE_180);  // 转弧度
 
                 pid_measure = measure->relative_angle_gyro;
                 float pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, ref);
@@ -401,9 +394,9 @@ void DMMotorControlInit(void)
     LOGINFO("[dm_motor] %d motor(s) registered, centralized control ready.", idx);
     for (size_t i = 0; i < idx; i++) {
         DMMotorInstance *m = dm_motor_instance[i];
-        uint16_t can_bus = (m->motor_can_instace->can_handle == &hcan1) ? 1 : 2;
+        uint16_t can_bus = (m->motor_can_instance->can_handle == &hcan1) ? 1 : 2;
         LOGINFO("[dm_motor] [%d] mode=%d can=%d tx_id=0x%lx rx_id=0x%lx",
                 i, m->control_mode, can_bus,
-                m->motor_can_instace->tx_id, m->motor_can_instace->rx_id);
+                m->motor_can_instance->tx_id, m->motor_can_instance->rx_id);
     }
 }

@@ -23,11 +23,13 @@ void GimbalInit()
         .can_init_config.can_handle = &hcan2,
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp = 50,
-                .Ki = 0,
-                .Kd = 1.0f,
-                .IntegralLimit = 3000,
-                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_DerivativeFilter,
+                .Kp = 90,
+                .Ki = 1.0f,
+                .Kd = 5.0f,
+                .IntegralLimit = 300,
+                .CoefA = 2.0f,
+                .CoefB = 0.05f,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_DerivativeFilter | PID_ChangingIntegrationRate,
                 .MaxOut = 15000,
                 .Derivative_LPF_RC = 0.005f,
             },
@@ -116,7 +118,7 @@ static void GimbalReset()
     /* Yaw: 复位到标定零点 */
     DMMotorSetRef(motor_yaw, 0);
 
-    /* Pitch: 复位到当前陀螺仪角度 (SPEED_LOOP 自动初始化 offest_angle) */
+    /* Pitch: 复位到当前陀螺仪角度 (SPEED_LOOP 自动初始化 offset_angle) */
     DMMotorSetRef(motor_pitch, 0);
 }
 
