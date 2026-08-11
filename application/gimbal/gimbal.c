@@ -114,11 +114,9 @@ void GimbalInit()
     };
      //@todo: 当前还没有设置电机的正反转,仍然需要手动添加reference的正负号,需要电机module的支持,待修改.
     gimbal_Yaw_config.can_init_config.tx_id = 1;
-    gimbal_Yaw_config.can_init_config.rx_id = 0x301;
     gimbal_Yaw_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     motor_yaw = DMMotorInit(&gimbal_Yaw_config, DJI_MODE);
     gimbal_Pitch_config.can_init_config.tx_id = 2;
-    gimbal_Pitch_config.can_init_config.rx_id = 0x302;
     gimbal_Pitch_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_NORMAL;
     motor_pitch = DMMotorInit(&gimbal_Pitch_config, DJI_MODE);
         DMMotorControlInit();
@@ -154,9 +152,9 @@ static void GimbalReset()
    // GimbalpositionControl(&yaw_ecd_cmd, &pitch_ecd_cmd);
     //yaw_ecd_cmd = (yaw_ecd_cmd - motor_yaw->measure.offset_ecd) * 2 / 8192 * 3.14;
     //pitch_ecd_cmd = (pitch_ecd_cmd - motor_pitch->measure.offset_ecd) * 2 / 8192 * 3.14;
-    DMMotorSetRef(motor_yaw, 0, 0, 0, ecd_maker,0);//初始化yaw
+    DMMotorSetRef(motor_yaw, 0, 0, 0, ecd_maker);//初始化yaw
    // DMMotorSetRef(motor_pitch, 0, 0, 0, ecd_maker,1);
-    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker,1);
+    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker);
     //motor_pitch->raw_gyro = gimbal_IMU_data->Pitch;
     //motor_pitch->measure.offest_angle=motor_pitch ->raw_gyro;
   
@@ -199,13 +197,13 @@ static void GimbalFreeMode()
         motor_yaw->measure.offset_ecd = (uint16_t)target;
     }
     ecd_relative(motor_yaw);
-    DMMotorSetRef(motor_yaw, 0, 0, 0, ecd_maker, 0);       // Yaw: 编码器闭环 target=0
+    DMMotorSetRef(motor_yaw, 0, 0, 0, ecd_maker);       // Yaw: 编码器闭环 target=0
 
     /* ---- Pitch: IMU闭环(不变) ---- */
     float yaw_angle_cmd = 0, pitch_angle_cmd = 0;
     GimbalIMUControl(&yaw_angle_cmd, &pitch_angle_cmd);
     gyro_relative(motor_pitch, pitch_angle_cmd, 1);
-    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker, 1);
+    DMMotorSetRef(motor_pitch, 0, 0, 0, gyro_maker);
 }
 static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
 {

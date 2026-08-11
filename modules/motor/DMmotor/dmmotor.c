@@ -24,21 +24,14 @@
 static uint8_t idx;
 static DMMotorInstance *dm_motor_instance[DM_MOTOR_CNT];
 static osThreadId dm_task_handle[DM_MOTOR_CNT];
-static CANInstance sender_assignment[6] = {
+static CANInstance sender_assignment[4] = {
     [0] = {.can_handle = &hcan1, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [1] = {.can_handle = &hcan1, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [2] = {.can_handle = &hcan1, .txconf.StdId = 0x2ff, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [3] = {.can_handle = &hcan2, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [4] = {.can_handle = &hcan2, .txconf.StdId = 0x200, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
-    [5] = {.can_handle = &hcan2, .txconf.StdId = 0x2ff, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [1] = {.can_handle = &hcan1, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [2] = {.can_handle = &hcan2, .txconf.StdId = 0x3FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
+    [3] = {.can_handle = &hcan2, .txconf.StdId = 0x4FE, .txconf.IDE = CAN_ID_STD, .txconf.RTR = CAN_RTR_DATA, .txconf.DLC = 0x08, .tx_buff = {0}},
 };
 
-/* 两个用于将uint值和float值进行映射的函数,在设定发送值和解析反馈值时使用 */
-/**
- * @brief 6个用于确认是否有电机注册到sender_assignment中的标志位,防止发送空帧,此变量将在DJIMotorControl()使用
- *        flag的初始化在 MotorSenderGrouping()中进行
- */
-static uint8_t sender_enable_flag[6] = {0};
+static uint8_t sender_enable_flag[4] = {0};
 static uint16_t float_to_uint(float x, float x_min, float x_max, uint8_t bits)
 {
     float span = x_max - x_min;
@@ -68,6 +61,7 @@ static void DMMotorDecode(CANInstance *motor_can)
     DM_Motor_Measure_s *measure = &(motor->measure); // 将can实例中保存的id转换成电机实例的指针
 
     DaemonReload(motor->motor_daemon);
+    motor->feed_cnt++;
     measure->last_ecd = measure->ecd;
     measure->ecd = ((uint16_t)rxbuff[0]) << 8 | rxbuff[1];
     measure->angle_single_round = ECD_ANGLE_COEF_DM * (float)measure->ecd;
@@ -119,6 +113,26 @@ static void DMMotorLostCallback(void *motor_ptr)
     DWT_Delay(0.1);
 }
 
+/** @brief DJI_MODE 电机分组: 自动分配 sender_group 和 rx_id */
+static void MotorSenderGrouping(DMMotorInstance *motor, CAN_Init_Config_s *config)
+{
+    uint8_t motor_id = config->tx_id - 1;  // motor_ID 1-8 → 索引 0-7
+    if (motor_id >= 8) return;
+
+    /* 反馈 CAN ID = 0x300 + motor_ID (一拖四手册) */
+    config->rx_id = 0x300 + config->tx_id;
+
+    /* 分组: motor 1-4 → 0x3FE, motor 5-8 → 0x4FE */
+    if (motor_id < 4) {
+        motor->message_num = motor_id;
+        motor->sender_group = (config->can_handle == &hcan1) ? 0 : 2;
+    } else {
+        motor->message_num = motor_id - 4;
+        motor->sender_group = (config->can_handle == &hcan1) ? 1 : 3;
+    }
+    sender_enable_flag[motor->sender_group] = 1;
+}
+
 void DMMotorCaliEncoder(DMMotorInstance *motor)
 {
     DMMotorSetMode(DM_CMD_ZERO_POSITION, motor);
@@ -155,6 +169,10 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
         .reload_count = 10,
     };
     motor->motor_daemon = DaemonRegister(&conf);
+
+    /* DJI_MODE: 在 tx_id 偏移前分组 (需要原始 motor_ID) */
+    if (motor->control_mode == DJI_MODE)
+        MotorSenderGrouping(motor, &config->can_init_config);
 
     switch (motor->control_mode)
     {
@@ -196,18 +214,13 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
  * 
  * @attention 请根据不同电机模式设置对应需要的目标值,不需要的目标值置 0 防止疯车
  */
-void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag, uint8_t extern_flag)
+void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag)
 {
-if (motor == NULL)
-{
-   return; /* code */
-}
-
+    if (motor == NULL) return;
     motor->pid_ref[0] = ref1;
     motor->pid_ref[1] = ref2;
     motor->pid_ref[2] = ref3;
     motor->maker_flag = maker_flag;
-    motor->extern_flag=extern_flag;
 }
 
 void DMMotorEnable(DMMotorInstance *motor)
@@ -231,7 +244,6 @@ void DMMotorOuterLoop(DMMotorInstance *motor, Closeloop_Type_e type)
 }
 
         int16_t set;
-                int16_t set_P=0;
 //@Todo: 目前只实现了力控，更多位控PID等请自行添加 // MIT模式
 void DMMotorTask(void const *argument)
 {
@@ -241,7 +253,6 @@ void DMMotorTask(void const *argument)
     DMMotorInstance *motor = (DMMotorInstance *)argument;
     Motor_Control_Setting_s *setting = &motor->motor_settings;
     uint8_t motor_flag;
-    uint8_t extern_flag;
     DM_Motor_Measure_s *measure = &motor->measure;
     while (1)
     {        
@@ -249,7 +260,6 @@ void DMMotorTask(void const *argument)
         set2 = motor->pid_ref[1];
         set3 = motor->pid_ref[2];
         motor_flag=motor->maker_flag;
-        extern_flag=motor->extern_flag;
         switch (motor->control_mode)
         {
         case MIT_MODE:
@@ -305,74 +315,37 @@ void DMMotorTask(void const *argument)
             CANTransmit(motor->motor_can_instace, 1);
             break;
             case DJI_MODE:
-            float pid_measure, pid_ref ,pid_out;
- // 如果需要使用motor_controller，确保正确初始化
+            {
+            float pid_measure, pid_ref, pid_out;
             pid_ref = set2;
-  
-            float pid_gyro_out=0,pid_gyro_total=0,pid_accel_out=0;
-                if(motor_flag==1)
-                {
 
-                     if(extern_flag==0)
-                     {
-                    pid_measure = measure->relative_angle_gyro;
-                    pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, pid_ref);
-                    pid_measure = measure->gyro;
-                    pid_out = PIDCalculate(&motor->speed_PID, pid_measure, pid_gyro_total+pid_gyro_out);
-                    set = (int16_t)pid_out;
-                     }
-                     if (extern_flag==1)
-                     {
-                    // pid_measure=measure->accel;
-                    // pid_accel_out=PIDCalculate(&motor->angle_PID, pid_measure, pid_ref);
-                    pid_measure = measure->relative_angle_gyro;
-                    pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, pid_ref);
-                    pid_measure = measure->gyro;
-                    pid_out = PIDCalculate(&motor->speed_PID, pid_measure, pid_gyro_total+pid_gyro_out);
-                        if(motor->shoot_flag_dm==1)
-                        {
-                                pid_out=pid_out;
-                        }
+            float pid_gyro_out = 0;
 
-                    set_P = (int16_t)pid_out;
-                     }
-                    }
-                if(motor_flag==0)
-                {
-                pid_measure = measure->relative_angle; // MOTOR_FEED,对total angle闭环,防止在边界处出现突跃
+            if (motor_flag == 1)  // 陀螺仪模式
+            {
+                pid_measure = measure->relative_angle_gyro;
+                pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, pid_ref);
+                pid_measure = measure->gyro;
+                pid_out = PIDCalculate(&motor->speed_PID, pid_measure, pid_gyro_out);
+            }
+            else  // 编码器模式
+            {
+                pid_measure = measure->relative_angle;  // rad, ±π
                 pid_out = PIDCalculate(&motor->angle_PID, pid_measure, pid_ref);
-                     if(extern_flag==0)
-                     {
-                         set = (int16_t)pid_out;
-                     }
-                     if (extern_flag==1)
-                     {
-                         set_P = (int16_t)pid_out;/* code */
-                     }
-                }// 更新pid_ref进入下一个环
-    // 处理停止标志
-    if (motor->stop_flag == MOTOR_STOP)  
-    {
-     set = 0;
-     set_P =0;
-    }
-     LIMIT_MIN_MAX(set, DM_V_MIN, DM_V_MAX);
-     LIMIT_MIN_MAX(set_P, DM_V_MIN, DM_V_MAX);
-        if (extern_flag==0)
-        {
-                sender_assignment[3].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE)+0] = (uint8_t)(set >> 8);  // 低八位
-                sender_assignment[3].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE) + 1] = (uint8_t)(set & 0x00ff); // 高八位
-            CANTransmit(&sender_assignment[3], 1); /* code */
-        }
-                if (extern_flag==1)
-        {
-                sender_assignment[0].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE)+0] = (uint8_t)(set_P >> 8);  // 低八位
-                sender_assignment[0].tx_buff[2 * (motor->motor_can_instace->tx_id-1-0x3FE) + 1] = (uint8_t)(set_P & 0x00ff); // 高八位
-            CANTransmit(&sender_assignment[0], 1); /* code */
-        }
+            }
 
+            if (motor->stop_flag == MOTOR_STOP)
+                pid_out = 0;
 
-             break;
+            set = (int16_t)pid_out;
+            LIMIT_MIN_MAX(set, DM_V_MIN, DM_V_MAX);
+
+            sender_assignment[motor->sender_group].tx_buff[2 * motor->message_num + 0] = (uint8_t)(set >> 8);
+            sender_assignment[motor->sender_group].tx_buff[2 * motor->message_num + 1] = (uint8_t)(set & 0x00ff);
+            CANTransmit(&sender_assignment[motor->sender_group], 1);
+
+            break;
+            }
         default:
             while (1)
                 LOGERROR("[dm_motor] undefined control mode!");

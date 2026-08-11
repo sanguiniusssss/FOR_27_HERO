@@ -130,12 +130,12 @@ typedef struct
     CANInstance *motor_can_instace;
     DaemonInstance *motor_daemon;
     uint32_t lost_cnt;
+    uint32_t feed_cnt;       // CAN反馈计数器
         // 分组发送设置
     uint8_t sender_group;
     uint8_t message_num;
     uint8_t maker_flag;
      Motor_Controller_s motor_controller;
-     uint8_t extern_flag;
      uint8_t shoot_flag_dm;
  
 } DMMotorInstance;
@@ -150,7 +150,7 @@ typedef enum
 
 DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor_Control_Mode);
 
-void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag, uint8_t extern_flag);
+void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag);
 
 void DMMotorOuterLoop(DMMotorInstance *motor,Closeloop_Type_e closeloop_type);
 
