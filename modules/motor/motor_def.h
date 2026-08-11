@@ -118,6 +118,7 @@ typedef enum
     GM6020,
     M3508,
     M2006,
+    J4310,   // DM-J4310 系列 (一拖四)
     LK9025,
     HT04,
 } Motor_Type_e;

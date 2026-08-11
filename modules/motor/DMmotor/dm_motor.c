@@ -122,8 +122,9 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
 {
     DMMotorInstance *motor = (DMMotorInstance *)malloc(sizeof(DMMotorInstance));
     memset(motor, 0, sizeof(DMMotorInstance));
+    motor->motor_type    = config->motor_type;
     motor->control_mode = Motor_Control_Mode;
-   
+
     motor->motor_settings = config->controller_setting_init_config;
     PIDInit(&motor->gyro_PID, &config->controller_param_init_config.gyro_PID);
     PIDInit(&motor->speed_PID, &config->controller_param_init_config.speed_PID);

@@ -55,7 +55,7 @@ void GimbalInit()
             .outer_loop_type = ANGLE_LOOP,
             .close_loop_type = ANGLE_LOOP,
         },
-        .motor_type = M2006, // 达妙电机
+        .motor_type = J4310,
     };
     Motor_Init_Config_s gimbal_Pitch_config = {
         .can_init_config.can_handle = &hcan1,
@@ -91,7 +91,7 @@ void GimbalInit()
             .outer_loop_type = SPEED_LOOP,
             .close_loop_type = ANGLE_LOOP | SPEED_LOOP,
         },
-        .motor_type = M3508, // 达妙电机
+        .motor_type = J4310,
     };
      //@todo: 当前还没有设置电机的正反转,仍然需要手动添加reference的正负号,需要电机module的支持,待修改.
     gimbal_Yaw_config.can_init_config.tx_id = 1;

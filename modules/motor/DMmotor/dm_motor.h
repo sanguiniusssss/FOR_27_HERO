@@ -108,8 +108,9 @@ typedef struct
         uint8_t data[4];
     } t_des;
 } DMMotor_Send_DJI_s;
-typedef struct 
+typedef struct
 {
+    Motor_Type_e        motor_type;
     DMControl_Mode_e control_mode;
     DM_Motor_Measure_s measure;
     Motor_Control_Setting_s motor_settings;
