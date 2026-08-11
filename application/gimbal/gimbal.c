@@ -16,8 +16,6 @@ static attitude_t *gimbal_IMU_data; // 云台IMU数据
  uint8_t mode_change_flag = 0;//模式转换标志位
 
 
-static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add, uint8_t goal);//角度制转换成弧度制
-
 void GimbalInit()
 {
     gimbal_IMU_data = INS_Init();
@@ -118,7 +116,7 @@ static void GimbalReset()
     /* Yaw: 复位到标定零点 */
     DMMotorSetRef(motor_yaw, 0);
 
-    gyro_relative(motor_pitch, 0, 1);
+    /* Pitch: 复位到当前陀螺仪角度 (SPEED_LOOP 自动初始化 offest_angle) */
     DMMotorSetRef(motor_pitch, 0);
 }
 
@@ -129,13 +127,11 @@ static void GimbalReset()
 static void GimbalFreeMode()
 {
     static float  yaw_target_rad = 0;
-    static float  pitch_target_deg = 0;    // Pitch 目标角度(度)
+    static float  pitch_target_deg = 0;
     static uint8_t yaw_first_free = 1;
     static uint8_t pitch_first_free = 1;
 
     gimbal_feedback_data.yaw_relative_angle = motor_yaw->measure.relative_angle;
-
-    motor_pitch->raw_gyro = gimbal_IMU_data->Pitch;
 
     if (mode_change_flag == 1)
     {
@@ -144,7 +140,7 @@ static void GimbalFreeMode()
         mode_change_flag = 0;
     }
 
-    /* ---- Yaw: 编码器闭环, 直接计算目标角度 ---- */
+    /* ---- Yaw: 编码器闭环 ---- */
     if (yaw_first_free) {
         yaw_target_rad = motor_yaw->measure.relative_angle;
         yaw_first_free = 0;
@@ -154,84 +150,16 @@ static void GimbalFreeMode()
     if (yaw_target_rad < -PI)      yaw_target_rad += 2.0f * PI;
     DMMotorSetRef(motor_yaw, yaw_target_rad);
 
-    /* ---- Pitch: IMU陀螺仪闭环, 直接计算目标角度 ---- */
-    gyro_relative(motor_pitch, 0, 0);  // 仅更新 relative_angle_gyro, 不修改 offest_angle
+    /* ---- Pitch: IMU陀螺仪闭环 (SPEED_LOOP 自动维护 relative_angle_gyro) ---- */
     if (pitch_first_free) {
         pitch_target_deg = motor_pitch->measure.relative_angle_gyro * (180.0f / PI);
         pitch_first_free = 0;
     }
     pitch_target_deg += gimbal_cmd_recv.pitch_add_angle;
-    /* 机械限位: 对齐原 gyro_relative goal==1 的 [-15, 35] 范围 */
     if (pitch_target_deg < -15.0f) pitch_target_deg = -15.0f;
     if (pitch_target_deg >  35.0f) pitch_target_deg =  35.0f;
     DMMotorSetRef(motor_pitch, pitch_target_deg * (PI / 180.0f));
 }
-static void ecd_relative(DMMotorInstance *motor)//编码器转换成弧度制
-{
-     motor->measure.relative_ecd = motor->measure.ecd - motor->measure.offset_ecd;
-    while (motor->measure.relative_ecd > HALF_ECD_RANGE)  // 4096
-        motor->measure.relative_ecd -= ECD_RANGE;         // 8192
-    while (motor->measure.relative_ecd < -HALF_ECD_RANGE)
-        motor->measure.relative_ecd += ECD_RANGE;
-    motor->measure.relative_angle=motor->measure.relative_ecd*MOTOR_ECD_TO_RAD;
-}
-static void gyro_relative(DMMotorInstance *motor, float gyro_angle_add, uint8_t goal)
-{
-    // 每个电机独立判断是否需要初始化:
-    // 如果offest_angle与当前IMU角度(raw_gyro)差异>90度,说明尚未初始化或刚切换模式
-    if (fabsf(motor->measure.offest_angle - motor->raw_gyro) > 90.0f)
-        motor->measure.offest_angle = motor->raw_gyro;
-
-  
-
-    if(gyro_angle_add!=0)
-    {
-        motor->measure.offest_angle=motor->measure.offest_angle+gyro_angle_add; /* code */
-    }
-    if(motor->measure.offest_angle>180)
-    {
-        motor->measure.offest_angle=motor->measure.offest_angle-360;
-    }
-    else if (motor->measure.offest_angle<-180)
-    {
-        motor->measure.offest_angle=motor->measure.offest_angle+360;
-    }
-    if (goal==1)
-    {
-    if (motor->measure.offest_angle<-15)
-    {
-       motor->measure.offest_angle=-15; /* code */
-    }
-    else if (motor->measure.offest_angle>35)
-    {
-        motor->measure.offest_angle=35; /* code */
-    }/* code */
-    }
-    
-
-
-    
-    motor->measure.relative_angle_gyro = motor->measure.gyro_angle - motor->measure.offest_angle;
-    //motor->measure.relative_angle_gyro= relative_angle_gyro;
-    if (motor->measure.relative_angle_gyro > HALF_GYRO_RANGE) // 180
-    {
-        motor->measure.relative_angle_gyro -= GYRO_RANGE; // 360
-    }
-    else if (motor->measure.relative_angle_gyro < -HALF_GYRO_RANGE)
-    {
-        motor->measure.relative_angle_gyro += GYRO_RANGE;
-    }
-    if (motor->measure.relative_angle_gyro > HALF_GYRO_RANGE) // 180
-    {
-        motor->measure.relative_angle_gyro -= GYRO_RANGE; // 360
-    }
-    else if (motor->measure.relative_angle_gyro < -HALF_GYRO_RANGE)
-    {
-        motor->measure.relative_angle_gyro += GYRO_RANGE;
-    }
-    motor->measure.relative_angle_gyro = motor->measure.relative_angle_gyro * 3.1415926/180;
-}
-
 
 static void GimbalModeControl()
 {
@@ -261,19 +189,17 @@ static void GimbalModeControl()
 /* 机器人云台控制核心任务,后续考虑只保留IMU控制,不再需要电机的反馈 */
 void GimbalTask()
 {
-    // 获取云台控制数据
-    // 后续增加未收到数据的处理
     SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
-        motor_pitch->raw_gyro = -4.5f;//pitch的初始化角度
-    DMMotorShootFlag(motor_pitch,gimbal_cmd_recv.shoot_flag);//不记得了应该没用
-    DMMotorShootFlag(motor_yaw,0);        //发射前馈
-    motor_pitch->measure.gyro = gimbal_IMU_data->Gyro[0];//pitch的陀螺仪速度数据
-    motor_pitch->measure.accel=gimbal_IMU_data->Accel[1];//pitch的加速度数据
-    motor_pitch->measure.gyro_angle = gimbal_IMU_data->Pitch;//pitch的角度数据
-    ecd_relative(motor_yaw);//初始化用
-    ecd_relative(motor_pitch);//没什么用
-   gimbal_feedback_data.yaw_relative_angle= motor_yaw->measure.relative_angle ;//传给地盘进行运动学解算
+
+    /* 设置 Pitch 陀螺仪数据 (dm_motor 内部控制相对角度计算) */
+    DMMotorSetGyro(motor_pitch, gimbal_IMU_data->Pitch, gimbal_IMU_data->Gyro[0]);
+    motor_pitch->measure.accel = gimbal_IMU_data->Accel[1];  // 加速度计(预留)
+
+    DMMotorShootFlag(motor_pitch, gimbal_cmd_recv.shoot_flag);
+    DMMotorShootFlag(motor_yaw, 0);
+
+    gimbal_feedback_data.yaw_relative_angle = motor_yaw->measure.relative_angle;
     GimbalModeControl();
-    //  推送消息
+
     PubPushMessage(gimbal_pub, (void *)&gimbal_feedback_data);
 }

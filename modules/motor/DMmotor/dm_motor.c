@@ -238,7 +238,23 @@ void DMMotorOuterLoop(DMMotorInstance *motor, Closeloop_Type_e type)
     motor->motor_settings.outer_loop_type = type;
 }
 
+/**
+ * @brief 设置电机的陀螺仪数据 (IMU角度和角速度)
+ *
+ * @param motor     电机实例
+ * @param angle_deg IMU角度(度)
+ * @param rate_dps  陀螺仪角速度(dps)
+ */
+void DMMotorSetGyro(DMMotorInstance *motor, float angle_deg, float rate_dps)
+{
+    if (motor == NULL) return;
+    motor->raw_gyro = angle_deg;
+    motor->measure.gyro_angle = angle_deg;
+    motor->measure.gyro = rate_dps;
+}
+
 /* ======================== 集中式控制 ======================== */
+
 
 /**
  * @brief 集中式 DM 电机控制 (1kHz, 在 MotorControlTask 中调用)
@@ -256,6 +272,16 @@ void DMMotorControl(void)
         Motor_Control_Setting_s *setting = &motor->motor_settings;
         DM_Motor_Measure_s *measure = &motor->measure;
         float ref = motor->motor_controller.pid_ref;
+
+        /* 编码器 -> relative_angle (原 ecd_relative) */
+        if (motor->control_mode == DJI_MODE) {
+            measure->relative_ecd = measure->ecd - measure->offset_ecd;
+            while (measure->relative_ecd > HALF_ECD_RANGE)
+                measure->relative_ecd -= ECD_RANGE;
+            while (measure->relative_ecd < -HALF_ECD_RANGE)
+                measure->relative_ecd += ECD_RANGE;
+            measure->relative_angle = measure->relative_ecd * MOTOR_ECD_TO_RAD;
+        }
 
         switch (motor->control_mode) {
 
@@ -325,6 +351,21 @@ void DMMotorControl(void)
 
             if (setting->outer_loop_type == SPEED_LOOP)  // 陀螺仪模式
             {
+                /* 陀螺仪相对角度计算 (原 gyro_relative)
+                   自动初始化 offest_angle */
+                if (fabsf(measure->offest_angle - motor->raw_gyro) > 90.0f)
+                    measure->offest_angle = motor->raw_gyro;
+                measure->relative_angle_gyro = measure->gyro_angle - measure->offest_angle;
+                while (measure->relative_angle_gyro > 180.0f)
+                    measure->relative_angle_gyro -= 360.0f;
+                while (measure->relative_angle_gyro < -180.0f)
+                    measure->relative_angle_gyro += 360.0f;
+                while (measure->relative_angle_gyro > 180.0f)
+                    measure->relative_angle_gyro -= 360.0f;
+                while (measure->relative_angle_gyro < -180.0f)
+                    measure->relative_angle_gyro += 360.0f;
+                measure->relative_angle_gyro *= (PI / 180.0f);  // 转弧度
+
                 pid_measure = measure->relative_angle_gyro;
                 float pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, ref);
                 pid_measure = measure->gyro;

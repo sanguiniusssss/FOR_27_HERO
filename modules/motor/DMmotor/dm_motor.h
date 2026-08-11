@@ -163,4 +163,6 @@ void DMMotorControlInit(void);
 void DMMotorControl(void);
 
 void DMMotorShootFlag(DMMotorInstance *motor,uint8_t shoot_flag);
+
+void DMMotorSetGyro(DMMotorInstance *motor, float angle_deg, float rate_dps);
 #endif // !DM_MOTOR_H
