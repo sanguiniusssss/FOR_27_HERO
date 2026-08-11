@@ -160,7 +160,9 @@ void DMMotorStop(DMMotorInstance *motor);
 
 void DMMotorCaliEncoder(DMMotorInstance *motor);
 
-void DMMotorControlInit();
+void DMMotorControlInit(void);
+
+void DMMotorControl(void);
 
 void DMMotorShootFlag(DMMotorInstance *motor,uint8_t shoot_flag);
 #endif // !DMMOTOR
