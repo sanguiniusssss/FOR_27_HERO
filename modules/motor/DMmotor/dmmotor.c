@@ -202,24 +202,17 @@ DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor
 }
 
 /**
- * @brief 达妙电机设定目标值
+ * @brief 设定电机目标值 (与 DJIMotorSetRef 对齐)
  *
- * @param motor 目标电机指针
- * @param ref1 位置目标值
- * @param ref2 速度目标值
- * @param ref3 电流/扭矩目标值,随电机控制模式而切换
- * @param maker_flag 控制模式标志位
- * 
- * @attention 请根据不同电机模式设置对应需要的目标值,不需要的目标值置 0 防止疯车
+ * @param motor  电机实例
+ * @param ref    目标值: DJI_MODE 为编码器角度(rad), MIT=扭矩(N·m), etc.
  */
-void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag)
+void DMMotorSetRef(DMMotorInstance *motor, float ref)
 {
     if (motor == NULL) return;
-    motor->pid_ref[0] = ref1;
-    motor->pid_ref[1] = ref2;
-    motor->pid_ref[2] = ref3;
-    motor->maker_flag = maker_flag;
+    motor->motor_controller.pid_ref = ref;
 }
+
 
 void DMMotorEnable(DMMotorInstance *motor)
 {
@@ -261,21 +254,19 @@ void DMMotorControl(void)
         DM_Motor_Measure_s *measure = &motor->measure;
         motor_flag = motor->maker_flag;
 
-        float set1 = motor->pid_ref[0];
-        float set2 = motor->pid_ref[1];
-        float set3 = motor->pid_ref[2];
+        float ref = motor->motor_controller.pid_ref;
 
         switch (motor->control_mode) {
 
         case MIT_MODE:
             if (setting->motor_reverse_flag == MOTOR_DIRECTION_REVERSE)
-                set3 *= -1;
+                ref *= -1;
             {
                 DMMotor_Send_MIT_s mit;
-                LIMIT_MIN_MAX(set3, DM_T_MIN, DM_T_MAX);
+                LIMIT_MIN_MAX(ref, DM_T_MIN, DM_T_MAX);
                 mit.position_des = float_to_uint(0, DM_P_MIN, DM_P_MAX, 16);
                 mit.velocity_des = float_to_uint(0, DM_V_MIN, DM_V_MAX, 12);
-                mit.torque_des   = float_to_uint(set3, DM_T_MIN, DM_T_MAX, 12);
+                mit.torque_des   = float_to_uint(ref, DM_T_MIN, DM_T_MAX, 12);
                 mit.Kp = 0; mit.Kd = 0;
 
                 if (motor->stop_flag == MOTOR_STOP)
@@ -296,13 +287,16 @@ void DMMotorControl(void)
 
         case POSVEL_MODE:
             if (setting->motor_reverse_flag == MOTOR_DIRECTION_REVERSE)
-                set1 *= -1;
+                ref *= -1;
             {
                 DMMotor_Send_PosVel_s posvel;
-                LIMIT_MIN_MAX(set1, DM_P_MIN, DM_P_MAX);
-                LIMIT_MIN_MAX(set2, DM_V_MIN, DM_V_MAX);
-                posvel.p_des.position_des = set1;
-                posvel.v_des.velocity_des = set2;
+                LIMIT_MIN_MAX(ref, DM_P_MIN, DM_P_MAX);
+                float vel_ff = 0;
+                if (motor->motor_controller.speed_feedforward_ptr)
+                    vel_ff = *motor->motor_controller.speed_feedforward_ptr;
+                LIMIT_MIN_MAX(vel_ff, DM_V_MIN, DM_V_MAX);
+                posvel.p_des.position_des = ref;
+                posvel.v_des.velocity_des = vel_ff;
                 if (motor->stop_flag == MOTOR_STOP)
                     posvel.v_des.velocity_des = 0;
                 memcpy(motor->motor_can_instace->tx_buff, &posvel, 8);
@@ -312,11 +306,11 @@ void DMMotorControl(void)
 
         case VEL_MODE:
             if (setting->motor_reverse_flag == MOTOR_DIRECTION_REVERSE)
-                set2 *= -1;
+                ref *= -1;
             {
                 DMMotor_Send_Vel_s vel;
-                LIMIT_MIN_MAX(set2, DM_V_MIN, DM_V_MAX);
-                vel.v_des.velocity_des = set2;
+                LIMIT_MIN_MAX(ref, DM_V_MIN, DM_V_MAX);
+                vel.v_des.velocity_des = ref;
                 if (motor->stop_flag == MOTOR_STOP)
                     vel.v_des.velocity_des = 0;
                 memcpy(motor->motor_can_instace->tx_buff, &vel, 4);
@@ -326,20 +320,19 @@ void DMMotorControl(void)
 
         case DJI_MODE:
         {
-            float pid_measure, pid_ref, pid_out;
-            pid_ref = set2;
+            float pid_measure, pid_out;
 
             if (motor_flag == 1)  // 陀螺仪模式
             {
                 pid_measure = measure->relative_angle_gyro;
-                float pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, pid_ref);
+                float pid_gyro_out = PIDCalculate(&motor->gyro_PID, pid_measure, ref);
                 pid_measure = measure->gyro;
                 pid_out = PIDCalculate(&motor->speed_PID, pid_measure, pid_gyro_out);
             }
             else  // 编码器模式
             {
                 pid_measure = measure->relative_angle;  // rad, ±π
-                pid_out = PIDCalculate(&motor->angle_PID, pid_measure, pid_ref);
+                pid_out = PIDCalculate(&motor->angle_PID, pid_measure, ref);
             }
 
             if (motor->stop_flag == MOTOR_STOP)

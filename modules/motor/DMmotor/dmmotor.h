@@ -122,7 +122,6 @@ typedef struct
     float *other_speed_feedback_ptr;
     float *speed_feedforward_ptr;
     float *gyro_feedforward_ptr;
-    float pid_ref[3];   // 位置;速度;电流/扭矩的目标值
     float raw_gyro;
     float relative_gyro_yaw;
     float relative_gyro_pitch;
@@ -150,7 +149,7 @@ typedef enum
 
 DMMotorInstance *DMMotorInit(Motor_Init_Config_s *config, DMControl_Mode_e Motor_Control_Mode);
 
-void DMMotorSetRef(DMMotorInstance *motor, float ref1, float ref2, float ref3, uint8_t maker_flag);
+void DMMotorSetRef(DMMotorInstance *motor, float ref);
 
 void DMMotorOuterLoop(DMMotorInstance *motor,Closeloop_Type_e closeloop_type);
 
