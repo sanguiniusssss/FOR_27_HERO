@@ -319,10 +319,7 @@ void DMMotorControl(void)
                 if (fabsf(measure->offset_angle - motor->raw_gyro) > DM_GYRO_INIT_THRESHOLD)
                     measure->offset_angle = motor->raw_gyro;
                 measure->relative_angle_gyro = measure->gyro_angle - measure->offset_angle;
-                while (measure->relative_angle_gyro > DM_ANGLE_180)
-                    measure->relative_angle_gyro -= DM_ANGLE_360;
-                while (measure->relative_angle_gyro < -DM_ANGLE_180)
-                    measure->relative_angle_gyro += DM_ANGLE_360;
+                /* 归一化到 [-180, 180] 度 */
                 while (measure->relative_angle_gyro > DM_ANGLE_180)
                     measure->relative_angle_gyro -= DM_ANGLE_360;
                 while (measure->relative_angle_gyro < -DM_ANGLE_180)

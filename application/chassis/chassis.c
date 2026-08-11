@@ -13,6 +13,10 @@
 #include "referee_UI.h"
 #include "arm_math.h"
 #include <stdint.h>
+
+#ifdef CHASSIS_BOARD
+#include "can_comm.h"
+#endif
 /* 根据robot_def.h中的macro自动计算的参数 */
 #define HALF_WHEEL_BASE (WHEEL_BASE / 2.0f)     // 半轴距
 #define HALF_WHEEL_TRACK (WHEEL_TRACK / 2.0f)   // 半轮距
@@ -20,8 +24,13 @@
 
 /* 底盘应用包含的模块和信息存储,底盘是单例模式,因此不需要为底盘建立单独的结构体 */
 
+#ifdef ONE_BOARD
 static Publisher_t *chassis_pub;                    // 用于发布底盘的数据
 static Subscriber_t *chassis_sub;                   // 用于订阅底盘的控制命令
+#endif /* ONE_BOARD */
+#ifdef CHASSIS_BOARD
+static CANCommInstance *chassis_can_comm;           // 双板通信
+#endif /* CHASSIS_BOARD */
 static Chassis_Ctrl_Cmd_s chassis_cmd_recv;         // 底盘接收到的控制命令
 static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数据
 
@@ -78,8 +87,23 @@ void ChassisInit()
     chassis_motor_config.controller_setting_init_config.motor_reverse_flag = MOTOR_DIRECTION_REVERSE;
     motor_rb = DJIMotorInit(&chassis_motor_config);
 
+#ifdef ONE_BOARD
     chassis_sub = SubRegister("chassis_cmd", sizeof(Chassis_Ctrl_Cmd_s));
     chassis_pub = PubRegister("chassis_feed", sizeof(Chassis_Upload_Data_s));
+#endif /* ONE_BOARD */
+#ifdef CHASSIS_BOARD
+    CANComm_Init_Config_s comm_conf = {
+        .can_config = {
+            .can_handle = &hcan2,
+            .tx_id = 0x311,   // chassis -> gimbal: Chassis_Upload_Data_s
+            .rx_id = 0x312,   // gimbal -> chassis: Chassis_Ctrl_Cmd_s
+        },
+        .send_data_len = sizeof(Chassis_Upload_Data_s),
+        .recv_data_len = sizeof(Chassis_Ctrl_Cmd_s),
+        .daemon_count = 10,
+    };
+    chassis_can_comm = CANCommInit(&comm_conf);
+#endif /* CHASSIS_BOARD */
 }
 
 #define LF_CENTER ((HALF_WHEEL_TRACK + CENTER_GIMBAL_OFFSET_X + HALF_WHEEL_BASE - CENTER_GIMBAL_OFFSET_Y) * DEGREE_2_RAD)
@@ -142,21 +166,24 @@ static void ChassisModeControl()
 /* 机器人底盘控制核心任务 */
 void ChassisTask()
 {
+#ifdef ONE_BOARD
     SubGetMessage(chassis_sub, &chassis_cmd_recv);
+#endif /* ONE_BOARD */
+#ifdef CHASSIS_BOARD
+    if (CANCommIsOnline(chassis_can_comm))
+        chassis_cmd_recv = *(Chassis_Ctrl_Cmd_s *)CANCommGet(chassis_can_comm);
+#endif /* CHASSIS_BOARD */
 
-
-    // 根据控制模式设定底盘速度
     ChassisModeControl();
 
-
-    // 根据控制模式进行逆运动学解算,计算底盘输出
     MecanumIKine();
 
-    
-    // 根据裁判系统的反馈数据和电容数据对输出限幅并设定闭环参考值
     ChassisOutput();
 
-
-    // UI_INIT_SECOND();
+#ifdef ONE_BOARD
     PubPushMessage(chassis_pub, (void *)&chassis_feedback_data);
+#endif /* ONE_BOARD */
+#ifdef CHASSIS_BOARD
+    CANCommSend(chassis_can_comm, (void *)&chassis_feedback_data);
+#endif /* CHASSIS_BOARD */
 }

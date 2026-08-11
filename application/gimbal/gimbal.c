@@ -63,15 +63,15 @@ void GimbalInit()
         .can_init_config.can_handle = &hcan1,
         .controller_param_init_config = {
             .angle_PID = {
-                .Kp = 100, // 4.5
+                .Kp = 5.0f, // 4.5
                 .Ki = 0, // 0
-                .Kd = 10, // 0
+                .Kd = 0, // 0
                 .IntegralLimit = 3000,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut = 15000,
             },
             .speed_PID = {
-                .Kp = 20,
+                .Kp = 10,
                 .Ki = 0,  // 0
                 .Kd = 0.08,  // 0
                 .IntegralLimit = 3000,
@@ -79,12 +79,13 @@ void GimbalInit()
                 .MaxOut = 50,
             },
             .gyro_PID = {
-                .Kp = 18, // 0.4
-                .Ki = 0,   // 0
-                .Kd = 0.1,
+                .Kp = 18,
+                .Ki = 0,
+                .Kd = 0.1f,
                 .IntegralLimit = 3000,
-                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
+                .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement | PID_DerivativeFilter,
                 .MaxOut = 50,
+                .Derivative_LPF_RC = 0.005f,
             },
         },
         .controller_setting_init_config = {

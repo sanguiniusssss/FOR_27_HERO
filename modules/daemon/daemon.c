@@ -16,9 +16,7 @@ DaemonInstance *DaemonRegister(Daemon_Init_Config_s *config)
     instance->owner_id = config->owner_id;
     instance->reload_count = config->reload_count == 0 ? 100 : config->reload_count; // 默认值为100
     instance->callback = config->callback;
-    instance->temp_count = config->init_count == 0 ? 100 : config->init_count; // 默认值为100,初始计数
-
-    instance->temp_count = config->reload_count;
+    instance->temp_count = config->init_count == 0 ? instance->reload_count : config->init_count;
     daemon_instances[idx++] = instance;
     return instance;
 }

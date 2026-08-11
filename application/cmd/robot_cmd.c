@@ -127,8 +127,9 @@ void RobotCMDInit()
             .tx_id = 0x312,
             .rx_id = 0x311,
         },
-        .recv_data_len = sizeof(Chassis_Upload_Data_s),
         .send_data_len = sizeof(Chassis_Ctrl_Cmd_s),
+        .recv_data_len = sizeof(Chassis_Upload_Data_s),
+        .daemon_count = 10,
     };
 
 
