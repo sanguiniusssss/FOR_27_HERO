@@ -83,12 +83,12 @@ uint16_t shoot_last_mode=0;
 void RobotCMDInit()
 {
        config_chassis_wz = malloc(sizeof(PID_Init_Config_s));
-    config_chassis_wz->Kp = 15000;
+    config_chassis_wz->Kp = 1500;      // 云台相对底盘角(rad) -> 底盘目标角速度(dps)
     config_chassis_wz->Ki = 0;
     config_chassis_wz->Kd = 0;
     config_chassis_wz->Improve = PID_Integral_Limit | PID_Derivative_On_Measurement;
-    config_chassis_wz->MaxOut = 15000;
-    config_chassis_wz->IntegralLimit = 10000;
+    config_chassis_wz->MaxOut = 1500; // 目标角速度上限(dps)
+    config_chassis_wz->IntegralLimit = 500;
     config_chassis_wz->Kf = 0;
     config_chassis_wz->DeadBand=0;
     config_chassis_wz->Ref_FF=0;
@@ -187,6 +187,9 @@ static void GimbalSendUpdate()
  */
 static void RemoteControlSet()
 {
+    static int16_t dial_zero = 0;
+    static float yaw_follow_base = 0;   // 进入跟随模式时记录的 yaw 基准(rad)
+    static chassis_mode_e prev_chassis_mode = CHASSIS_ZERO_FORCE;
     // static uint8_t test_flag = 1;
     // if (upper_cmd_send.upper_mode != UPPER_CALI)
     //{
@@ -198,18 +201,27 @@ static void RemoteControlSet()
             chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
             gimbal_cmd_send.gimbal_mode = GIMBAL_FREE_MODE;
         
-        if (rc_data[TEMP].rc.dial < -450)
-        {       //CAN_cmd_lsy(0, 0, 0, 0);
-             chassis_cmd_send.wz = -2000.0f; // 逆时针旋转
-        }
-        else if (rc_data[TEMP].rc.dial > 600)
-        { //CAN_cmd_lsy(0, 1, 0, 0);
-             chassis_cmd_send.wz = 2000.0f; // 顺时针旋转
-        }
-        else if (rc_data[TEMP].rc.dial == 0)
+        /* 拨轮自标定 + yaw 跟随基准标定: 切换到此模式时记录零位 */
         {
-            chassis_wz_ref = gimbal_fetch_data.yaw_relative_angle;
-            chassis_cmd_send.wz = PIDCalculate(pid_chassis_wz, chassis_wz_ref, 0);
+            int16_t dial = rc_data[TEMP].rc.dial;
+
+            if (prev_chassis_mode != CHASSIS_ROTATE) {
+                dial_zero = dial;
+                yaw_follow_base = gimbal_fetch_data.yaw_relative_angle;
+            }
+
+            int16_t dial_delta = dial - dial_zero;
+            if (dial_delta > -150 && dial_delta < 150)
+            {
+                /* 底盘跟随云台相对变化(非绝对归零), 上电时偏差=0不转 */
+                float yaw_delta = gimbal_fetch_data.yaw_relative_angle - yaw_follow_base;
+                chassis_cmd_send.wz = PIDCalculate(pid_chassis_wz, yaw_delta, 0);
+            }
+            else
+            {
+                int16_t effective = (dial_delta > 0) ? (dial_delta - 150) : (dial_delta + 150);
+                chassis_cmd_send.wz = (float)effective * 5.0f;
+            }
         }
         chassis_cmd_send.vx = -20.0f * (float)rc_data[TEMP].rc.rocker_r_;              // _水平方向
         chassis_cmd_send.vy = 20.0f * (float)rc_data[TEMP].rc.rocker_r1;               // |竖直方向
@@ -291,6 +303,7 @@ static void RemoteControlSet()
     //         CmdRecvUpdate();
     //     }
     // }
+    prev_chassis_mode = chassis_cmd_send.chassis_mode;
 }
 #endif // USE_DT7
 

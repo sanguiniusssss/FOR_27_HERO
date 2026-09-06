@@ -34,28 +34,28 @@ void GimbalInit()
                 .Derivative_LPF_RC = 0.005f,
             },
             .speed_PID = {
-                .Kp = 15, // 4.5
-                .Ki = 0, // 0
-                .Kd = 0.01, // 0
+                .Kp = 5,
+                .Ki = 0,
+                .Kd = 0,
                 .IntegralLimit = 3000,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
-                .MaxOut = 2000,
+                .MaxOut = 40,
             },
 
             .gyro_PID = {
-                .Kp = 15, // 0.4
-                .Ki = 0, // 0
-                .Kd = 0.01,
+                .Kp = 3,
+                .Ki = 0,
+                .Kd = 0,
                 .IntegralLimit = 3000,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
-                .MaxOut = 2000,
+                .MaxOut = 40,
             },
         },
         .controller_setting_init_config = {
             .angle_feedback_source = MOTOR_FEED,
             .speed_feedback_source = MOTOR_FEED,
-            .outer_loop_type = ANGLE_LOOP,
-            .close_loop_type = ANGLE_LOOP,
+            .outer_loop_type = SPEED_LOOP,
+            .close_loop_type = ANGLE_LOOP | SPEED_LOOP,
         },
         .motor_type = J4310,
     };
@@ -116,11 +116,11 @@ static void GimbalReset()
 {
     mode_change_flag = 1;
 
-    /* Yaw: 复位到标定零点 */
+    /* Yaw: 复位时切编码器闭环, 回到标定零点 */
+    DMMotorOuterLoop(motor_yaw, ANGLE_LOOP);
     DMMotorSetRef(motor_yaw, 0);
 
-    /* Pitch: 复位到当前陀螺仪角度 (SPEED_LOOP 自动初始化 offset_angle) */
-    DMMotorSetRef(motor_pitch, 0);
+    /* Pitch: 陀螺仪闭环, 由 mode_change_flag 触发重新锁定当前位置 */
 }
 
 /**
@@ -129,7 +129,7 @@ static void GimbalReset()
  */
 static void GimbalFreeMode()
 {
-    static float  yaw_target_rad = 0;
+    static float  yaw_target_deg = 0;
     static float  pitch_target_deg = 0;
     static uint8_t yaw_first_free = 1;
     static uint8_t pitch_first_free = 1;
@@ -143,17 +143,16 @@ static void GimbalFreeMode()
         mode_change_flag = 0;
     }
 
-    /* ---- Yaw: 编码器闭环 ---- */
+    /* ---- Yaw: IMU陀螺仪闭环 (IMU在云台, 底盘转时云台保持绝对指向) ---- */
+    DMMotorOuterLoop(motor_yaw, SPEED_LOOP);
     if (yaw_first_free) {
-        yaw_target_rad = motor_yaw->measure.relative_angle;
+        yaw_target_deg = motor_yaw->measure.relative_angle_gyro * (180.0f / PI);
         yaw_first_free = 0;
     }
-    yaw_target_rad += gimbal_cmd_recv.yaw_add_angle * (PI / 180.0f);
-    if (yaw_target_rad > PI)       yaw_target_rad -= 2.0f * PI;
-    if (yaw_target_rad < -PI)      yaw_target_rad += 2.0f * PI;
-    DMMotorSetRef(motor_yaw, yaw_target_rad);
+    yaw_target_deg += gimbal_cmd_recv.yaw_add_angle;
+    DMMotorSetRef(motor_yaw, yaw_target_deg * (PI / 180.0f));
 
-    /* ---- Pitch: IMU陀螺仪闭环 (SPEED_LOOP 自动维护 relative_angle_gyro) ---- */
+    /* ---- Pitch: IMU陀螺仪闭环 ---- */
     if (pitch_first_free) {
         pitch_target_deg = motor_pitch->measure.relative_angle_gyro * (180.0f / PI);
         pitch_first_free = 0;
@@ -194,7 +193,9 @@ void GimbalTask()
 {
     SubGetMessage(gimbal_sub, &gimbal_cmd_recv);
 
-    /* 设置 Pitch 陀螺仪数据 (dm_motor 内部控制相对角度计算) */
+    /* 设置陀螺仪数据 (IMU在云台, yaw/pitch 均走陀螺仪闭环)
+       yaw 用 YawTotalAngle(连续角度), 避免 Yaw 欧拉角在 ±180° 跳变导致疯转 */
+    DMMotorSetGyro(motor_yaw,   gimbal_IMU_data->YawTotalAngle, gimbal_IMU_data->Gyro[2]);
     DMMotorSetGyro(motor_pitch, gimbal_IMU_data->Pitch, gimbal_IMU_data->Gyro[0]);
 
     DMMotorShootFlag(motor_pitch, gimbal_cmd_recv.shoot_flag);

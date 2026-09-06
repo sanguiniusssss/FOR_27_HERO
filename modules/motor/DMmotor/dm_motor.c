@@ -314,16 +314,13 @@ void DMMotorControl(void)
 
             if (setting->outer_loop_type == SPEED_LOOP)  // 陀螺仪模式
             {
-                /* 陀螺仪相对角度计算 (原 gyro_relative)
-                   自动初始化 offset_angle */
-                if (fabsf(measure->offset_angle - motor->raw_gyro) > DM_GYRO_INIT_THRESHOLD)
+                /* 陀螺仪相对角度计算, 首次调用时自动初始化 offset_angle
+                   gyro_angle 是连续角度(如 YawTotalAngle), 不做 ±180 包裹 */
+                if (!measure->init_flag) {
                     measure->offset_angle = motor->raw_gyro;
+                    measure->init_flag = 1;
+                }
                 measure->relative_angle_gyro = measure->gyro_angle - measure->offset_angle;
-                /* 归一化到 [-180, 180] 度 */
-                while (measure->relative_angle_gyro > DM_ANGLE_180)
-                    measure->relative_angle_gyro -= DM_ANGLE_360;
-                while (measure->relative_angle_gyro < -DM_ANGLE_180)
-                    measure->relative_angle_gyro += DM_ANGLE_360;
                 measure->relative_angle_gyro *= ((float)PI / DM_ANGLE_180);  // 转弧度
 
                 pid_measure = measure->relative_angle_gyro;

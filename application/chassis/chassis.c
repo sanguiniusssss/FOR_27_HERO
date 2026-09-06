@@ -34,17 +34,15 @@ static CANCommInstance *chassis_can_comm;           // 双板通信
 static Chassis_Ctrl_Cmd_s chassis_cmd_recv;         // 底盘接收到的控制命令
 static Chassis_Upload_Data_s chassis_feedback_data; // 底盘回传的反馈数据
 
-static float wz_compensate; // 底盘陀螺仪PID补偿值
+static float wz_compensate; // 底盘 wz 角速度(dps), cmd 层位置环输出
 
 static DJIMotorInstance *motor_lf, *motor_rf, *motor_lb, *motor_rb; // left right forward back
-
-static PIDInstance Chassis_wz_PID_Low, Chassis_wz_PID_High; // 底盘陀螺仪闭环控制 PID ,这里千万不能是指针，PIDInit()函数中没有 malloc 这一步
 
 /* 私有函数计算的中介变量,设为静态避免参数传递的开销 */
 static float sin_theta=1;   // 设置底盘行进方向
 static float cos_theta=0;   // 设置底盘行进方向
 static float chassis_vx, chassis_vy; // 将云台系的速度投影到底盘
-static float chassis_vx_m, chassis_vy_m, chassis_wz_m;// 经过坐标变换后的底盘速度   
+static float chassis_vx_m, chassis_vy_m, chassis_wz_m;// 经过坐标变换后的底盘速度
 static float vt_lf, vt_rf, vt_lb, vt_rb; // 底盘速度解算后的临时输出,待进行限幅
 
 void ChassisInit()
@@ -161,6 +159,9 @@ static void ChassisModeControl()
     // 底盘向右为左右正方向,向前为逆时针旋转为角度正方向;
     chassis_vx = -chassis_cmd_recv.vx;
     chassis_vy = -chassis_cmd_recv.vy;
+
+    /* wz 直接透传: cmd 层已完成位置环, 底盘电机自带速度环闭环 */
+    wz_compensate = -chassis_cmd_recv.wz;
 }
 
 /* 机器人底盘控制核心任务 */

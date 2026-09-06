@@ -126,8 +126,8 @@ void ShootInit()
 static void ShootFeedbackUpdate()
 {
 
-    static uint8_t fric_count=0;//达到目标速度
-    static uint8_t shoot_once_flag=0;//单发标志位
+    static uint8_t fric_count=0;//0 = 未检测到弹丸进入；1 = 检测到转速突降，弹丸正在经过摩擦轮
+    static uint8_t shoot_once_flag=0;//1 = 待发射（就绪）；0 = 刚完成一次发射或不允许发射
     switch (shoot_cmd_recv.bullet_speed)
     {
     case SMALL_AMU_15:
