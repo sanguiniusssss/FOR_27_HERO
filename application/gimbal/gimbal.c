@@ -43,10 +43,10 @@ void GimbalInit()
             },
 
             .gyro_PID = {
-                .Kp = 3,
-                .Ki = 0,
+                .Kp = 8,
+                .Ki = 0.3f,
                 .Kd = 0,
-                .IntegralLimit = 3000,
+                .IntegralLimit = 20,
                 .Improve = PID_Trapezoid_Intergral | PID_Integral_Limit | PID_Derivative_On_Measurement,
                 .MaxOut = 40,
             },

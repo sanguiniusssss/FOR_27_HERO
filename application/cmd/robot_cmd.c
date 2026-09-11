@@ -83,14 +83,14 @@ uint16_t shoot_last_mode=0;
 void RobotCMDInit()
 {
        config_chassis_wz = malloc(sizeof(PID_Init_Config_s));
-    config_chassis_wz->Kp = 1500;      // 云台相对底盘角(rad) -> 底盘目标角速度(dps)
+    config_chassis_wz->Kp = 2500;      // 云台相对底盘角(rad) -> 底盘目标角速度(dps)
     config_chassis_wz->Ki = 0;
     config_chassis_wz->Kd = 0;
     config_chassis_wz->Improve = PID_Integral_Limit | PID_Derivative_On_Measurement;
     config_chassis_wz->MaxOut = 1500; // 目标角速度上限(dps)
     config_chassis_wz->IntegralLimit = 500;
     config_chassis_wz->Kf = 0;
-    config_chassis_wz->DeadBand=0;
+    config_chassis_wz->DeadBand=0.03f; // 死区 ~1.7°, 云台微小偏航不触发底盘旋转
     config_chassis_wz->Ref_FF=0;
  
   pid_chassis_wz = malloc(sizeof(PIDInstance));
@@ -277,6 +277,7 @@ static void RemoteControlSet()
         //shoot_cmd_send.shoot_mode = SHOOT_OFF;
         //chassis_cmd_send.pump_mode = MOTOR_STOP;
     }
+
     // if (switch_is_down(rc_data[TEMP].rc.switch_right))
     // {
 
