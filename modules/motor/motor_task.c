@@ -13,7 +13,7 @@ void MotorControlTask()
     // if(cnt%10==0) //100hz
     DJIMotorControl();
     DMMotorControl();
-    //DJIMotorSetSMCE();
+    DJIMotorSetSMCE(); // 摩擦轮滑模控制(tx_id 5-8)
     /* 如果有对应的电机则取消注释,可以加入条件编译或者register对应的idx判断是否注册了电机 */
    // LKMotorControl();
 

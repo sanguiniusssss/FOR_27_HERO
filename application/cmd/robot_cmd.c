@@ -190,17 +190,34 @@ static void RemoteControlSet()
     static int16_t dial_zero = 0;
     static float yaw_follow_base = 0;   // 进入跟随模式时记录的 yaw 基准(rad)
     static chassis_mode_e prev_chassis_mode = CHASSIS_ZERO_FORCE;
-    // static uint8_t test_flag = 1;
-    // if (upper_cmd_send.upper_mode != UPPER_CALI)
-    //{
-    
 
-    if (switch_is_down(rc_data[TEMP].rc.switch_left)) // 左侧开关状态为[下]
+    /* 左拨杆「上」: 最高优先级, 所有电机无力 */
+    if (switch_is_up(rc_data[TEMP].rc.switch_left))
     {
-        
-            chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
-            gimbal_cmd_send.gimbal_mode = GIMBAL_FREE_MODE;
-        
+        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
+        chassis_cmd_send.vx = 0;
+        chassis_cmd_send.vy = 0;
+        chassis_cmd_send.wz = 0;
+        gimbal_cmd_send.gimbal_mode = GIMBAL_NOMOVE;
+        gimbal_cmd_send.yaw_add_angle = 0;
+        gimbal_cmd_send.pitch_add_angle = 0;
+        /* 摩擦轮急停: 保持使能 + SMC 目标速度 0, 主动刹停 */
+        shoot_cmd_send.shoot_mode = SHOOT_ON;
+        shoot_cmd_send.friction_mode = FRICTION_OFF;
+        shoot_cmd_send.load_mode = LOAD_STOP;
+        chassis_cmd_send.pump_mode = 0;
+        prev_chassis_mode = chassis_cmd_send.chassis_mode;
+         shoot_cmd_send.shoot_single_flag = 0;
+         shoot_start_flag = 1;
+        return;
+    }
+
+    /* 左拨杆「下」: 正常运动控制 */
+    if (switch_is_down(rc_data[TEMP].rc.switch_left))
+    {
+        chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
+        gimbal_cmd_send.gimbal_mode = GIMBAL_FREE_MODE;
+
         /* 拨轮自标定 + yaw 跟随基准标定: 切换到此模式时记录零位 */
         {
             int16_t dial = rc_data[TEMP].rc.dial;
@@ -228,82 +245,41 @@ static void RemoteControlSet()
         gimbal_cmd_send.yaw_add_angle = -(float)rc_data[TEMP].rc.rocker_l_ * 0.001f;   // 水平方向
         gimbal_cmd_send.pitch_add_angle = (float)rc_data[TEMP].rc.rocker_l1 * 0.0005f; // 竖直方向
         chassis_cmd_send.relative_angle = gimbal_fetch_data.yaw_relative_angle;
-             if (switch_is_up(rc_data[TEMP].rc.switch_right))//
-     {
-
-        if(shoot_start_flag==1)
-        {   
-            shoot_cmd_send.shoot_single_flag=1;
-           shoot_start_flag=0;
-        }
-
-            shoot_cmd_send.shoot_mode = SHOOT_ON; 
-            shoot_cmd_send.friction_mode =FRICTION_ON;
-           shoot_cmd_send.bullet_speed=SMALL_AMU_15;
-            chassis_cmd_send.pump_mode = shoot_fetch_data.shoot_state;//
-     }
-        else if (switch_is_mid(rc_data[TEMP].rc.switch_right))
-        {
-        // shoot_cmd_send.shoot_mode = SHOOT_ON;
-        // shoot_cmd_send.friction_mode =FRICTION_ON;
-        // shoot_cmd_send.bullet_speed=SMALL_AMU_15;
-         //shoot_cmd_send.bullet_speed=SMALL_AMU_18;
-        shoot_cmd_send.shoot_single_flag=0; 
-        shoot_start_flag=1;
-        chassis_cmd_send.pump_mode = 0;//
-
-        }
     }
-
-    else if (switch_is_mid(rc_data[TEMP].rc.switch_left)) // 左侧开关状态为[中]
+    else // 左拨杆「中」: 云台复位
     {
         chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
+        chassis_cmd_send.vx = 0;
+        chassis_cmd_send.vy = 0;
+        chassis_cmd_send.wz = 0;
         gimbal_cmd_send.gimbal_mode = GIMBAL_RESET;
-        //gimbal_cmd_send.yaw_ecd = GIMBAL_YAW_ECD;
-        //gimbal_cmd_send.pitch_ecd = GIMBAL_PITCH_ECD;
+        gimbal_cmd_send.yaw_add_angle = 0;
+        gimbal_cmd_send.pitch_add_angle = 0;
     }
-    // else if (switch_is_down(rc_data[TEMP].rc.switch_left)) // 左侧开关状态[下] 部署模式
-    // {
-    //     chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
-    //     gimbal_cmd_send.gimbal_mode = GIMBAL_FREE_MODE;
-    //     gimbal_cmd_send.yaw_add_angle = -(float)rc_data[TEMP].rc.rocker_l_ * 0.001f;   // 水平方向
-    //     gimbal_cmd_send.pitch_add_angle = -(float)rc_data[TEMP].rc.rocker_l1 * 0.000001f; // 竖直方向
-    // }
 
-   else if (switch_is_up(rc_data[TEMP].rc.switch_left))
+    /* 右拨杆: 发射控制 */
+    if (switch_is_up(rc_data[TEMP].rc.switch_right))
     {
-        chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
-        gimbal_cmd_send.gimbal_mode = GIMBAL_NOMOVE;
-        //shoot_cmd_send.shoot_mode = SHOOT_OFF;
-        //chassis_cmd_send.pump_mode = MOTOR_STOP;
+        if (shoot_start_flag == 1)
+        {
+            shoot_cmd_send.shoot_single_flag = 1;
+            shoot_start_flag = 0;
+        }
+        shoot_cmd_send.shoot_mode = SHOOT_ON;
+        shoot_cmd_send.friction_mode = FRICTION_ON;
+        shoot_cmd_send.bullet_speed = SMALL_AMU_15;
+        shoot_cmd_send.shoot_num = shoot_p;
+        chassis_cmd_send.pump_mode = shoot_fetch_data.shoot_state;
+    }
+    else if (switch_is_mid(rc_data[TEMP].rc.switch_right))
+    {
+        /* 右拨杆中: 紧急关闭摩擦轮 */
+        shoot_cmd_send.shoot_single_flag = 0;
+        shoot_start_flag = 1;
+        shoot_cmd_send.friction_mode = FRICTION_OFF;
+        chassis_cmd_send.pump_mode = 0;
     }
 
-    // if (switch_is_down(rc_data[TEMP].rc.switch_right))
-    // {
-
-    //    /* code */
-    // }
-    // // else
-    // {
-       
-    // }
-    
-
-
-    // else if (switch_is_mid(rc_data[TEMP].rc.switch_right))
-    //{
-
-    // }射击用
-
-    //}
-    // else
-    // {
-    //     if (upper_fetch_data.action_step == 0)
-    //     {
-    //         upper_cmd_send.upper_mode = UPPER_NO_MOVE;
-    //         CmdRecvUpdate();
-    //     }
-    // }
     prev_chassis_mode = chassis_cmd_send.chassis_mode;
 }
 #endif // USE_DT7
@@ -1254,10 +1230,16 @@ static void EmergencyHandler()
             {
                 robot_state = ROBOT_STOP;
                 gimbal_cmd_send.gimbal_mode = GIMBAL_NOMOVE;
+                gimbal_cmd_send.yaw_add_angle = 0;
+                gimbal_cmd_send.pitch_add_angle = 0;
                 chassis_cmd_send.chassis_mode = CHASSIS_ZERO_FORCE;
+                chassis_cmd_send.vx = 0;
+                chassis_cmd_send.vy = 0;
+                chassis_cmd_send.wz = 0;
                 shoot_cmd_send.shoot_mode = SHOOT_OFF;
                 shoot_cmd_send.friction_mode = FRICTION_OFF;
                 shoot_cmd_send.load_mode = LOAD_STOP;
+                chassis_cmd_send.pump_mode = 0;
                 // upper_cmd_send.upper_mode = UPPER_ZERO_FORCE;
                 LOGERROR("[CMD] emergency stop!");
             }
@@ -1280,10 +1262,7 @@ void RobotCMDTask()
 
     // 根据遥控器左侧开关,确定当前使用的控制模式为遥控器调试还是键鼠
 #ifdef USE_DT7
-    if (switch_is_down(rc_data[TEMP].rc.switch_left) && switch_is_mid(rc_data[TEMP].rc.switch_right))
-        MouseKeySet(); // 键鼠控制
-    else
-        RemoteControlSet(); // 遥控器控制
+    RemoteControlSet(); // 遥控器控制 (键鼠控制暂不启用, 取消与左拨杆的耦合)
 #endif
 
 #ifdef USE_VT13

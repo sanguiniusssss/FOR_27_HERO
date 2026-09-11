@@ -362,6 +362,9 @@ void DJIMotorSetSMCE()
     for (size_t i = 0; i < idx; ++i)
     { // 减小访存开销,先保存指针引用
         motor = dji_motor_instance[i];
+        // 底盘/其他电机(tx_id 1-4)走标准PID, 由 DJIMotorControl 处理, 这里跳过避免覆盖其输出
+        if (motor->motor_can_instance->tx_id <= 4)
+            continue;
         motor_setting = &motor->motor_settings;
         motor_controller = &motor->motor_controller;
         measure = &motor->measure;
@@ -432,6 +435,9 @@ void DJIMotorControl()
     for (size_t i = 0; i < idx; ++i)
     { // 减小访存开销,先保存指针引用
         motor = dji_motor_instance[i];
+        // 摩擦轮(tx_id 5-8)走滑模控制, 由 DJIMotorSetSMCE 处理, 这里跳过避免覆盖其输出
+        if (motor->motor_can_instance->tx_id >= 5)
+            continue;
         motor_setting = &motor->motor_settings;
         motor_controller = &motor->motor_controller;
         measure = &motor->measure;
