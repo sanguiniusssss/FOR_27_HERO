@@ -14,6 +14,7 @@
 // bsp
 #include "bsp_dwt.h"
 #include "bsp_log.h"
+#include <math.h>
 
 // 私有宏,自动将编码器转换成角度值
 #define YAW_ALIGN_ANGLE (YAW_CHASSIS_ALIGN_ECD * ECD_ANGLE_COEF_DJI) // 对齐时的角度,0-360
@@ -237,7 +238,11 @@ static void RemoteControlSet()
             else
             {
                 int16_t effective = (dial_delta > 0) ? (dial_delta - 150) : (dial_delta + 150);
-                chassis_cmd_send.wz = (float)effective * 5.0f;
+                /* 底盘速度 = A + 0.8A·sin(2π·f·t), 中心=A, 振幅=0.8A, f=0.25Hz(周期4s)
+                   范围 [0.2A, 1.8A], 最低不为0, 持续正弦摆动不卡顿 */
+                float A = (float)effective * 5.0f;
+                float t = DWT_GetTimeline_ms() / 1000.0f;
+                chassis_cmd_send.wz = A * (1.25f + 1.0f * sinf(2.0f * PI * 0.5f * t));
             }
         }
         chassis_cmd_send.vx = -20.0f * (float)rc_data[TEMP].rc.rocker_r_;              // _水平方向
