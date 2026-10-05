@@ -82,6 +82,33 @@ float shoot_p=1.00;
 uint8_t  Flag_z=0;
 uint8_t Flag_x=0;
 uint16_t shoot_last_mode=0;
+
+/* ===== 模拟枪口热量(未接裁判系统的占位实现) =====
+ * 云台板本地维护热量模型: 每发 +固定热量, 按冷却速率随时间递减, 用于自动开火门控.
+ * 接上裁判系统后应替换为真实的 heat / heat_limit / cooling_value. */
+#define SIM_HEAT_LIMIT         240.0f  // 热量上限(按机器人等级, 暂固定)
+#define SIM_HEAT_PER_BULLET    10.0f   // 每发弹增加的热量
+#define SIM_HEAT_COOLING_RATE  20.0f   // 冷却速率(热量/秒)
+static float sim_heat_current = 0.0f;  // 当前热量
+static uint32_t sim_heat_last_ms = 0;  // 上次更新时刻
+
+/* 热量随时间冷却 */
+static void SimHeatUpdate(void)
+{
+    uint32_t now = DWT_GetTimeline_ms();
+    if (sim_heat_last_ms == 0) { sim_heat_last_ms = now; return; }
+    float dt = (now - sim_heat_last_ms) / 1000.0f;
+    sim_heat_last_ms = now;
+    sim_heat_current -= SIM_HEAT_COOLING_RATE * dt;
+    if (sim_heat_current < 0.0f) sim_heat_current = 0.0f;
+}
+
+/* 是否还有热量余量供下一发使用 */
+static uint8_t SimHeatAllowFire(void)
+{
+    return (sim_heat_current + SIM_HEAT_PER_BULLET <= SIM_HEAT_LIMIT);
+}
+
 void RobotCMDInit()
 {
        config_chassis_wz = malloc(sizeof(PID_Init_Config_s));
@@ -297,7 +324,7 @@ static void RemoteControlSet()
         shoot_cmd_send.friction_mode = FRICTION_ON;
         shoot_cmd_send.bullet_speed = SMALL_AMU_15;
         shoot_cmd_send.shoot_num = shoot_p;
-        if (GimbalAutoFireAllow() && shoot_fetch_data.shoot_state == SHOOT_OFF)
+        if (GimbalAutoFireAllow() && shoot_fetch_data.shoot_state == SHOOT_OFF && SimHeatAllowFire())
             shoot_cmd_send.shoot_single_flag = 1;
         else
             shoot_cmd_send.shoot_single_flag = 0;
@@ -1283,6 +1310,15 @@ void RobotCMDTask()
 #endif // GIMBAL_BOARD  
     SubGetMessage(shoot_feed_sub, &shoot_fetch_data);
     SubGetMessage(gimbal_feed_sub, &gimbal_fetch_data);
+
+    /* 模拟热量: 冷却 + 按发射反馈计一发 */
+    SimHeatUpdate();
+    {
+        static uint8_t last_shoot_flag = 0;
+        if (shoot_fetch_data.shoot_flag && !last_shoot_flag)
+            sim_heat_current += SIM_HEAT_PER_BULLET;
+        last_shoot_flag = shoot_fetch_data.shoot_flag;
+    }
 
     // 根据遥控器左侧开关,确定当前使用的控制模式为遥控器调试还是键鼠
 #ifdef USE_DT7
