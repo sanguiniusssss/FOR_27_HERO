@@ -29,6 +29,18 @@ static Vision_Recv_s *vision_data;  // 视觉接收数据(自瞄)
 #define AIM_PITCH_MIN_DEG     -15.0f  // pitch 目标下限(度)
 #define AIM_PITCH_MAX_DEG      35.0f  // pitch 目标上限(度)
 
+/* ========== 自动开火参数 ========== */
+#define AIM_FIRE_WINDOW_DEG    2.0f   // 对准窗口: 实际角与目标角误差(度)
+#define AIM_FIRE_MAX_VEL       30.0f  // 目标角速度上限(dps), 过快(甩头)不开火
+
+static uint8_t auto_fire_flag = 0;    // 1=目标在开火窗口内
+
+/* 供 cmd 层查询是否允许自动开火 */
+uint8_t GimbalAutoFireAllow(void)
+{
+    return auto_fire_flag;
+}
+
 
 void GimbalInit()
 {
@@ -232,6 +244,15 @@ static void GimbalAutoAim()
     if (pitch_control_deg < AIM_PITCH_MIN_DEG) pitch_control_deg = AIM_PITCH_MIN_DEG;
     if (pitch_control_deg > AIM_PITCH_MAX_DEG) pitch_control_deg = AIM_PITCH_MAX_DEG;
     DMMotorSetRef(motor_pitch, pitch_control_deg * (PI / 180.0f));
+
+    /* ---- 开火判定: 目标在开火窗口内 且 目标角速度不大(不甩头) ---- */
+    if (vision_data->state > 0 &&
+        fabsf(WrapDeg(yaw_target_deg - yaw_meas_deg)) < AIM_FIRE_WINDOW_DEG &&
+        fabsf(pitch_target_deg - pitch_meas_deg) < AIM_FIRE_WINDOW_DEG &&
+        fabsf(vision_data->yaw_vel) < AIM_FIRE_MAX_VEL)
+        auto_fire_flag = 1;
+    else
+        auto_fire_flag = 0;
 }
 
 static void GimbalModeControl()

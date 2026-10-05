@@ -11,6 +11,7 @@
 #include "general_def.h"
 #include "dji_motor.h"
 #include "bmi088.h"
+#include "gimbal.h"
 // bsp
 #include "bsp_dwt.h"
 #include "bsp_log.h"
@@ -287,6 +288,20 @@ static void RemoteControlSet()
         shoot_start_flag = 1;
         shoot_cmd_send.friction_mode = FRICTION_OFF;
         chassis_cmd_send.pump_mode = 0;
+    }
+
+    /* 自瞄自动开火: 处于自瞄模式 → 自动开摩擦轮; 目标在开火窗口内且拨盘空闲 → 触发单发 */
+    if (gimbal_cmd_send.gimbal_mode == GIMBAL_AUTO_AIM)
+    {
+        shoot_cmd_send.shoot_mode = SHOOT_ON;
+        shoot_cmd_send.friction_mode = FRICTION_ON;
+        shoot_cmd_send.bullet_speed = SMALL_AMU_15;
+        shoot_cmd_send.shoot_num = shoot_p;
+        if (GimbalAutoFireAllow() && shoot_fetch_data.shoot_state == SHOOT_OFF)
+            shoot_cmd_send.shoot_single_flag = 1;
+        else
+            shoot_cmd_send.shoot_single_flag = 0;
+        chassis_cmd_send.pump_mode = shoot_fetch_data.shoot_state;
     }
 
     prev_chassis_mode = chassis_cmd_send.chassis_mode;
