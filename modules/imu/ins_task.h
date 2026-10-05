@@ -85,6 +85,11 @@ typedef struct
 attitude_t *INS_Init(void);
 
 /**
+ * @brief 获取四元数(wxyz)指针
+ */
+float *get_INS_quat_point(void);
+
+/**
  * @brief 此函数放入实时系统中,以1kHz频率运行
  *        p.s. osDelay(1);
  *

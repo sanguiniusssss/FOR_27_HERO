@@ -108,7 +108,7 @@ void RobotCMDInit()
 
     //self_ctrl_data = SelfCntlrInit(&huart6);
 
-     //vision_recv_data = VisionInit(&huart1); // 视觉通信串口
+     vision_recv_data = VisionInit(); // 视觉通信(USB虚拟串口)
 
     gimbal_cmd_pub = PubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
     gimbal_feed_sub = SubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));

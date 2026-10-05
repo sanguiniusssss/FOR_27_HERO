@@ -1,22 +1,17 @@
 /**
  * @file master_process.c
- * @author neozng
- * @brief  module for recv&send vision data
- * @version beta
- * @date 2022-11-03
- * @todo 增加对串口调试助手协议的支持,包括vofa和serial debug
- * @copyright Copyright (c) 2022
- *
+ * @brief  与视觉上位机(NUC)的通信模块, TJ 协议, 走 USB 虚拟串口
  */
 #include "master_process.h"
-#include "seasky_protocol.h"
+#include "crc_ref.h"
 #include "daemon.h"
 #include "bsp_log.h"
-#include "robot_def.h"
+#include "ins_task.h"
 
 static Vision_Recv_s recv_data;
 static Vision_Send_s send_data;
 static DaemonInstance *vision_daemon_instance;
+static uint8_t *vis_recv_buff; // USB 接收缓冲, 由 USBInit 提供
 
 void VisionSetFlag(Enemy_Color_e enemy_color, Work_Mode_e work_mode, Bullet_Speed_e bullet_speed)
 {
@@ -33,123 +28,75 @@ void VisionSetAltitude(float yaw, float pitch, float roll)
 }
 
 /**
- * @brief 离线回调函数,将在daemon.c中被daemon task调用
- * @attention 由于HAL库的设计问题,串口开启DMA接收之后同时发送有概率出现__HAL_LOCK()导致的死锁,使得无法
- *            进入接收中断.通过daemon判断数据更新,重新调用服务启动函数以解决此问题.
- *
- * @param id vision_usart_instance的地址,此处没用.
+ * @brief 离线回调, USB 通信无需重启服务, 仅记录
  */
 static void VisionOfflineCallback(void *id)
 {
-#ifdef VISION_USE_UART
-    USARTServiceInit(vision_usart_instance);
-#endif // !VISION_USE_UART
-    LOGWARNING("[vision] vision offline, restart communication.");
-}
-
-#ifdef VISION_USE_UART
-
-#include "bsp_usart.h"
-
-static USARTInstance *vision_usart_instance;
-
-/**
- * @brief 接收解包回调函数,将在bsp_usart.c中被usart rx callback调用
- * @todo  1.提高可读性,将get_protocol_info的第四个参数增加一个float类型buffer
- *        2.添加标志位解码
- */
-static void DecodeVision()
-{
-    uint16_t flag_register;
-    DaemonReload(vision_daemon_instance); // 喂狗
-    get_protocol_info(vision_usart_instance->recv_buff, &flag_register, (uint8_t *)&recv_data.pitch);
-    // TODO: code to resolve flag_register;
-}
-
-Vision_Recv_s *VisionInit(UART_HandleTypeDef *_handle)
-{
-    USART_Init_Config_s conf;
-    conf.module_callback = DecodeVision;
-    conf.recv_buff_size = VISION_RECV_SIZE;
-    conf.usart_handle = _handle;
-    vision_usart_instance = USARTRegister(&conf);
-
-    // 为master process注册daemon,用于判断视觉通信是否离线
-    Daemon_Init_Config_s daemon_conf = {
-        .callback = VisionOfflineCallback, // 离线时调用的回调函数,会重启串口接收
-        .owner_id = vision_usart_instance,
-        .reload_count = 10,
-    };
-    vision_daemon_instance = DaemonRegister(&daemon_conf);
-
-    return &recv_data;
+    (void)id;
+    LOGWARNING("[vision] vision offline");
 }
 
 /**
- * @brief 发送函数
- *
- * @param send 待发送数据
- *
+ * @brief USB 接收回调: 校验 CRC16 与帧头, 解析 NUC 下发的目标角
  */
-void VisionSend()
-{
-    // buff和txlen必须为static,才能保证在函数退出后不被释放,使得DMA正确完成发送
-    // 析构后的陷阱需要特别注意!
-    static uint16_t flag_register;
-    static uint8_t send_buff[VISION_SEND_SIZE];
-    static uint16_t tx_len;
-    // TODO: code to set flag_register
-    flag_register = 30 << 8 | 0b00000001;
-    // 将数据转化为seasky协议的数据包
-    get_protocol_send_data(0x02, flag_register, &send_data.yaw, 3, send_buff, &tx_len);
-    USARTSend(vision_usart_instance, send_buff, tx_len, USART_TRANSFER_DMA); // 和视觉通信使用IT,防止和接收使用的DMA冲突
-    // 此处为HAL设计的缺陷,DMASTOP会停止发送和接收,导致再也无法进入接收中断.
-    // 也可在发送完成中断中重新启动DMA接收,但较为复杂.因此,此处使用IT发送.
-    // 若使用了daemon,则也可以使用DMA发送.
-}
-
-#endif // VISION_USE_UART
-
-#ifdef VISION_USE_VCP
-
-#include "bsp_usb.h"
-static uint8_t *vis_recv_buff;
-
 static void DecodeVision(uint16_t recv_len)
 {
-    uint16_t flag_register;
-    get_protocol_info(vis_recv_buff, &flag_register, (uint8_t *)&recv_data.pitch);
-    // TODO: code to resolve flag_register;
+    if (recv_len != sizeof(TJ_R_t))
+        return;
+    if (Verify_CRC16_Check_Sum(vis_recv_buff, sizeof(TJ_R_t)) != TRUE)
+        return;
+
+    TJ_R_t *frame = (TJ_R_t *)vis_recv_buff;
+    if (frame->head[0] != 'S' || frame->head[1] != 'P')
+        return;
+
+    recv_data.state = frame->mode;
+    recv_data.yaw = frame->yaw;
+    recv_data.yaw_vel = frame->yaw_vel;
+    recv_data.pitch = frame->pitch;
+    recv_data.pitch_vel = frame->pitch_vel;
+
+    DaemonReload(vision_daemon_instance); // 喂狗
 }
 
-/* 视觉通信初始化 */
-Vision_Recv_s *VisionInit(UART_HandleTypeDef *_handle)
+Vision_Recv_s *VisionInit(void)
 {
-    UNUSED(_handle); // 仅为了消除警告
     USB_Init_Config_s conf = {.rx_cbk = DecodeVision};
     vis_recv_buff = USBInit(conf);
 
-    // 为master process注册daemon,用于判断视觉通信是否离线
     Daemon_Init_Config_s daemon_conf = {
-        .callback = VisionOfflineCallback, // 离线时调用的回调函数,会重启串口接收
+        .callback = VisionOfflineCallback,
         .owner_id = NULL,
-        .reload_count = 5, // 50ms
+        .reload_count = 5, // 50ms 未收到数据判定掉线
     };
     vision_daemon_instance = DaemonRegister(&daemon_conf);
 
     return &recv_data;
 }
 
-void VisionSend()
+/**
+ * @brief 组 TJ_T 帧并发送给 NUC
+ */
+void VisionSend(void)
 {
-    static uint16_t flag_register;
-    static uint8_t send_buff[VISION_SEND_SIZE];
-    static uint16_t tx_len;
-    // TODO: code to set flag_register
-    flag_register = 30 << 8 | 0b00000001;
-    // 将数据转化为seasky协议的数据包
-    get_protocol_send_data(0x02, flag_register, &send_data.yaw, 3, send_buff, &tx_len);
-    USBTransmit(send_buff, tx_len);
-}
+    static TJ_T_t tj_t; // 必须为 static, USB 发送完成前不能被释放
+    attitude_t *ins = INS_Init();
+    float *q = get_INS_quat_point();
 
-#endif // VISION_USE_VCP
+    tj_t.head[0] = 'S';
+    tj_t.head[1] = 'P';
+    tj_t.mode = 1;
+    tj_t.q[0] = q[0];
+    tj_t.q[1] = q[1];
+    tj_t.q[2] = q[2];
+    tj_t.q[3] = q[3];
+    tj_t.yaw = send_data.yaw;
+    tj_t.pitch = send_data.pitch;
+    tj_t.yaw_vel = ins->Gyro[2];   // yaw 角速度
+    tj_t.pitch_vel = ins->Gyro[0]; // pitch 角速度
+    tj_t.bullet_speed = (float)send_data.bullet_speed;
+    tj_t.bullet_count = 0;
+    tj_t.crc16 = Get_CRC16_Check_Sum((uint8_t *)&tj_t, sizeof(TJ_T_t) - 2, 0xffff);
+
+    USBTransmit((uint8_t *)&tj_t, sizeof(TJ_T_t));
+}

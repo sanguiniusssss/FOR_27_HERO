@@ -26,9 +26,6 @@
 //#define USE_VT13    // 使用VT13(图传接收端)遥控器进行控制
 //#define USE_FS      // 使用富斯IBUS协议进行控制 // 注意添加反相器！！！！！
 
-#define VISION_USE_VCP // 使用虚拟串口发送视觉数据
-// #define VISION_USE_UART // 使用串口发送视觉数据
-
 /* 机器人重要参数定义,注意根据不同机器人进行修改,浮点数需要以.0或f结尾,无符号以u结尾 */
 // 机械臂参数
 #define CALI_STEP_TIME 100                                              // 校准时间

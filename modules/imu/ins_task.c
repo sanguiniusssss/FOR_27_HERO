@@ -115,6 +115,14 @@ attitude_t *INS_Init(void)
     return (attitude_t *)&INS.Gyro; // @todo: 这里偷懒了,不要这样做! 修改INT_t结构体可能会导致异常,待修复.
 }
 
+/**
+ * @brief 获取四元数(wxyz)指针, 供视觉通信等模块使用
+ */
+float *get_INS_quat_point(void)
+{
+    return INS.q;
+}
+
 /* 注意以1kHz的频率运行此任务 */
 void INS_Task(void)
 {

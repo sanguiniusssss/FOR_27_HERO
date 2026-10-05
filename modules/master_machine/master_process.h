@@ -1,113 +1,110 @@
+/**
+ * @file master_process.h
+ * @brief  与视觉上位机(NUC)的通信模块, 采用 TJ 协议(USB 虚拟串口)
+ *         帧头 'S''P', 整包 CRC16 校验
+ * @note   协议源自 gimbal_and_trigger 工程, 在这里复用其 NUC 端
+ */
 #ifndef MASTER_PROCESS_H
 #define MASTER_PROCESS_H
 
-#include "bsp_usart.h"
-#include "seasky_protocol.h"
+#include <stdint.h>
+#include "bsp_usb.h"
 
-#define VISION_RECV_SIZE 18u // 当前为固定值,36字节
-#define VISION_SEND_SIZE 36u
-
-#pragma pack(1)
+/* 使用枚举值, 与 NUC 端保持一致 */
 typedef enum
 {
-	NO_FIRE = 0,
-	AUTO_FIRE = 1,
-	AUTO_AIM = 2
-} Fire_Mode_e;
-
-typedef enum
-{
-	NO_TARGET = 0,
-	TARGET_CONVERGING = 1,
-	READY_TO_FIRE = 2
-} Target_State_e;
-
-typedef enum
-{
-	NO_TARGET_NUM = 0,
-	HERO1 = 1,
-	ENGINEER2 = 2,
-	INFANTRY3 = 3,
-	INFANTRY4 = 4,
-	INFANTRY5 = 5,
-	OUTPOST = 6,
-	SENTRY = 7,
-	BASE = 8
-} Target_Type_e;
-
-typedef struct
-{
-	Fire_Mode_e fire_mode;
-	Target_State_e target_state;
-	Target_Type_e target_type;
-
-	float pitch;
-	float yaw;
-} Vision_Recv_s;
-
-typedef enum
-{
-	COLOR_NONE = 0,
-	COLOR_BLUE = 1,
-	COLOR_RED = 2,
+    COLOR_NONE = 0,
+    COLOR_BLUE = 1,
+    COLOR_RED = 2,
 } Enemy_Color_e;
 
 typedef enum
 {
-	VISION_MODE_AIM = 0,
-	VISION_MODE_SMALL_BUFF = 1,
-	VISION_MODE_BIG_BUFF = 2
+    VISION_MODE_AIM = 0,
+    VISION_MODE_SMALL_BUFF = 1,
+    VISION_MODE_BIG_BUFF = 2
 } Work_Mode_e;
 
 typedef enum
 {
-	BULLET_SPEED_NONE = 0,
-	BIG_AMU_10 = 10,
-	SMALL_AMU_15 = 15,
-	BIG_AMU_16 = 16,
-	SMALL_AMU_18 = 18,
-	SMALL_AMU_30 = 30,
+    BULLET_SPEED_NONE = 0,
+    BIG_AMU_10 = 10,
+    SMALL_AMU_15 = 15,
+    BIG_AMU_16 = 16,
+    SMALL_AMU_18 = 18,
+    SMALL_AMU_30 = 30,
 } Bullet_Speed_e;
 
+#pragma pack(1)
+/* 主控 -> NUC : 43 字节 */
 typedef struct
 {
-	Enemy_Color_e enemy_color;
-	Work_Mode_e work_mode;
-	Bullet_Speed_e bullet_speed;
+    uint8_t head[2]; // 'S''P'
+    uint8_t mode;    // 0: 空闲, 1: 自瞄, 2: 小符, 3: 大符
+    float q[4];      // 四元数 wxyz
+    float yaw;
+    float yaw_vel;
+    float pitch;
+    float pitch_vel;
+    float bullet_speed;
+    uint16_t bullet_count;
+    uint16_t crc16;
+} TJ_T_t;
 
-	float yaw;
-	float pitch;
-	float roll;
-} Vision_Send_s;
+/* NUC -> 主控 */
+typedef struct
+{
+    uint8_t head[2]; // 'S''P'
+    uint8_t mode;    // 0: 不控制, 1: 只自瞄(不开火), 2: 自瞄+开火
+    float yaw;
+    float yaw_vel;
+    float yaw_acc;
+    float pitch;
+    float pitch_vel;
+    float pitch_acc;
+    uint16_t crc16;
+} TJ_R_t;
 #pragma pack()
 
-/**
- * @brief 调用此函数初始化和视觉的串口通信
- *
- * @param handle 用于和视觉通信的串口handle(C板上一般为USART1,丝印为USART2,4pin)
- */
-Vision_Recv_s *VisionInit(UART_HandleTypeDef *_handle);
+/* 解析后暴露给应用层使用的接收数据 */
+typedef struct
+{
+    uint8_t state; // 来自 TJ_R.mode: 0 不控制, >0 自瞄中
+    float yaw;
+    float yaw_vel;
+    float pitch;
+    float pitch_vel;
+} Vision_Recv_s;
+
+/* 主控发送给 NUC 的数据 */
+typedef struct
+{
+    Enemy_Color_e enemy_color;
+    Work_Mode_e work_mode;
+    Bullet_Speed_e bullet_speed;
+
+    float yaw;
+    float pitch;
+    float roll;
+} Vision_Send_s;
 
 /**
- * @brief 发送视觉数据
- *
+ * @brief  初始化与视觉的 USB 通信, 返回接收数据结构体指针
  */
-void VisionSend();
+Vision_Recv_s *VisionInit(void);
 
 /**
- * @brief 设置视觉发送标志位
- *
- * @param enemy_color
- * @param work_mode
- * @param bullet_speed
+ * @brief  发送姿态和状态给 NUC
+ */
+void VisionSend(void);
+
+/**
+ * @brief  设置发送给 NUC 的标志位
  */
 void VisionSetFlag(Enemy_Color_e enemy_color, Work_Mode_e work_mode, Bullet_Speed_e bullet_speed);
 
 /**
- * @brief 设置发送数据的姿态部分
- *
- * @param yaw
- * @param pitch
+ * @brief  设置发送给 NUC 的姿态角
  */
 void VisionSetAltitude(float yaw, float pitch, float roll);
 
