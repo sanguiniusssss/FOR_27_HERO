@@ -5,7 +5,8 @@
 #include "message_center.h"
 #include "general_def.h"
 #include "bmi088.h"
-
+#include "master_process.h"
+#include <math.h>
 
 static Publisher_t *gimbal_pub;                   // 云台应用消息发布者(云台反馈给cmd)
 static Subscriber_t *gimbal_sub;                  // cmd控制消息订阅者
@@ -13,7 +14,20 @@ static Gimbal_Upload_Data_s gimbal_feedback_data; // 回传给cmd的云台状态
 static Gimbal_Ctrl_Cmd_s gimbal_cmd_recv;         // 来自cmd的控制信息
 static DMMotorInstance *motor_yaw, *motor_pitch;
 static attitude_t *gimbal_IMU_data; // 云台IMU数据
+static Vision_Recv_s *vision_data;  // 视觉接收数据(自瞄)
  uint8_t mode_change_flag = 0;//模式转换标志位
+
+/* ========== 自瞄(阶梯逼近)参数, 单位: 度 ========== */
+#define AIM_YAW_DIVIDE_MIN     0.57f  // yaw 死区(~0.01rad), 误差小于它进入比例收敛
+#define AIM_YAW_DIVIDE_STEP    0.57f  // yaw 匀速逼近步长(~0.01rad)
+#define AIM_YAW_REACH          1.72f  // yaw 接近判定(~0.03rad)
+#define AIM_YAW_PLUS           0.8f   // yaw 比例收敛系数
+#define AIM_PITCH_DIVIDE_MIN   5.73f  // pitch 死区(~0.1rad)
+#define AIM_PITCH_DIVIDE_STEP  0.57f  // pitch 匀速逼近步长
+#define AIM_PITCH_REACH        1.72f  // pitch 接近判定
+#define AIM_PITCH_PLUS         0.6f   // pitch 比例收敛系数
+#define AIM_PITCH_MIN_DEG     -15.0f  // pitch 目标下限(度)
+#define AIM_PITCH_MAX_DEG      35.0f  // pitch 目标上限(度)
 
 
 void GimbalInit()
@@ -105,6 +119,7 @@ void GimbalInit()
     motor_pitch = DMMotorInit(&gimbal_Pitch_config, DJI_MODE);
     motor_yaw->measure.offset_ecd = 1045;  // Yaw 物理零点偏移(一次标定)
         DMMotorControlInit();
+    vision_data = VisionGetRecvData();     // 视觉接收数据指针(自瞄)
     gimbal_pub = PubRegister("gimbal_feed", sizeof(Gimbal_Upload_Data_s));
     gimbal_sub = SubRegister("gimbal_cmd", sizeof(Gimbal_Ctrl_Cmd_s));
 }
@@ -163,6 +178,62 @@ static void GimbalFreeMode()
     DMMotorSetRef(motor_pitch, pitch_target_deg * (PI / 180.0f));
 }
 
+/* 将角度归一化到 ±180° */
+static float WrapDeg(float deg)
+{
+    while (deg > 180.0f)  deg -= 360.0f;
+    while (deg < -180.0f) deg += 360.0f;
+    return deg;
+}
+
+/**
+ * @brief 自瞄模式: 阶梯式逼近视觉目标
+ *        Yaw 走编码器闭环(ANGLE_LOOP), Pitch 走陀螺仪闭环(SPEED_LOOP)
+ *        state==0(无目标)时冻结在当前位置, 不接收遥控器增量
+ */
+static void GimbalAutoAim()
+{
+    static float yaw_control_deg = 0;   // 累加的目标角(度)
+    static float pitch_control_deg = 0; // 累加的目标角(度)
+
+    if (mode_change_flag == 1) {
+        /* 进入自瞄: 目标角初始化为当前实际角, 避免跳变 */
+        yaw_control_deg   = motor_yaw->measure.relative_angle * (180.0f / PI);
+        pitch_control_deg = motor_pitch->measure.relative_angle_gyro * (180.0f / PI);
+        mode_change_flag = 0;
+    }
+
+    /* ---- Yaw: 编码器闭环, ref 单位 rad ---- */
+    DMMotorOuterLoop(motor_yaw, ANGLE_LOOP);
+    float yaw_meas_deg = motor_yaw->measure.relative_angle * (180.0f / PI);
+    float yaw_target_deg = vision_data->yaw * (180.0f / PI);
+
+    if (vision_data->state > 0) {
+        float err = WrapDeg(yaw_target_deg - yaw_control_deg);
+        if (fabsf(err) > AIM_YAW_DIVIDE_MIN)
+            yaw_control_deg += (err > 0) ? AIM_YAW_DIVIDE_STEP : -AIM_YAW_DIVIDE_STEP;
+        else if (fabsf(yaw_target_deg - yaw_meas_deg) < AIM_YAW_REACH)
+            yaw_control_deg += err * AIM_YAW_PLUS;
+    }
+    DMMotorSetRef(motor_yaw, yaw_control_deg * (PI / 180.0f));
+
+    /* ---- Pitch: 陀螺仪闭环, ref 单位 rad ---- */
+    DMMotorOuterLoop(motor_pitch, SPEED_LOOP);
+    float pitch_meas_deg = motor_pitch->measure.relative_angle_gyro * (180.0f / PI);
+    float pitch_target_deg = vision_data->pitch * (180.0f / PI);
+
+    if (vision_data->state > 0) {
+        float err = pitch_target_deg - pitch_control_deg;
+        if (fabsf(err) > AIM_PITCH_DIVIDE_MIN)
+            pitch_control_deg += (err > 0) ? AIM_PITCH_DIVIDE_STEP : -AIM_PITCH_DIVIDE_STEP;
+        else if (fabsf(pitch_target_deg - pitch_meas_deg) < AIM_PITCH_REACH)
+            pitch_control_deg += err * AIM_PITCH_PLUS;
+    }
+    if (pitch_control_deg < AIM_PITCH_MIN_DEG) pitch_control_deg = AIM_PITCH_MIN_DEG;
+    if (pitch_control_deg > AIM_PITCH_MAX_DEG) pitch_control_deg = AIM_PITCH_MAX_DEG;
+    DMMotorSetRef(motor_pitch, pitch_control_deg * (PI / 180.0f));
+}
+
 static void GimbalModeControl()
 {
     static gimbal_mode_e last_mode = GIMBAL_NOMOVE;
@@ -177,6 +248,13 @@ static void GimbalModeControl()
         if (last_mode != GIMBAL_FREE_MODE)
             mode_change_flag = 1;
         GimbalFreeMode();
+        motor_yaw->stop_flag = MOTOR_ENALBED;
+        motor_pitch->stop_flag = MOTOR_ENALBED;
+    }
+    else if (gimbal_cmd_recv.gimbal_mode == GIMBAL_AUTO_AIM) {
+        if (last_mode != GIMBAL_AUTO_AIM)
+            mode_change_flag = 1;
+        GimbalAutoAim();
         motor_yaw->stop_flag = MOTOR_ENALBED;
         motor_pitch->stop_flag = MOTOR_ENALBED;
     }

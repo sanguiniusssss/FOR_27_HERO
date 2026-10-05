@@ -219,6 +219,10 @@ static void RemoteControlSet()
         chassis_cmd_send.chassis_mode = CHASSIS_ROTATE;
         gimbal_cmd_send.gimbal_mode = GIMBAL_FREE_MODE;
 
+        /* 自瞄: 按住鼠标右键且视觉识别到目标 → 切换到自瞄模式 */
+        if (rc_data[TEMP].mouse.press_r && vision_recv_data->state > 0)
+            gimbal_cmd_send.gimbal_mode = GIMBAL_AUTO_AIM;
+
         /* 拨轮自标定 + yaw 跟随基准标定: 切换到此模式时记录零位 */
         {
             int16_t dial = rc_data[TEMP].rc.dial;

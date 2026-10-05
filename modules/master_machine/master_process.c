@@ -74,6 +74,11 @@ Vision_Recv_s *VisionInit(void)
     return &recv_data;
 }
 
+Vision_Recv_s *VisionGetRecvData(void)
+{
+    return &recv_data;
+}
+
 /**
  * @brief 组 TJ_T 帧并发送给 NUC
  */

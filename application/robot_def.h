@@ -208,6 +208,7 @@ typedef enum
     GIMBAL_RESET,                   // 云台复位
     GIMBAL_ZERO_FORCE,              // 废弃
     GIMBAL_GYRO_MODE,               // 云台陀螺仪控制模式
+    GIMBAL_AUTO_AIM,                // 自瞄模式(跟踪视觉目标)
 } gimbal_mode_e;
 
 

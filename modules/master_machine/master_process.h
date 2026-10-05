@@ -94,6 +94,11 @@ typedef struct
 Vision_Recv_s *VisionInit(void);
 
 /**
+ * @brief  获取视觉接收数据(供云台等应用读取)
+ */
+Vision_Recv_s *VisionGetRecvData(void);
+
+/**
  * @brief  发送姿态和状态给 NUC
  */
 void VisionSend(void);
